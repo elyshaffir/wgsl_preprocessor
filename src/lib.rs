@@ -1,8 +1,98 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
+use std::{any, borrow, collections::HashMap, fmt::Display, fs, io, io::Read, mem, path};
+
+pub trait BufferData {
+    type DataType;
+
+    fn buffer_attributes<'a>() -> &'a [wgpu::VertexAttribute];
+
+    fn describe<'a>() -> wgpu::VertexBufferLayout<'a> {
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<Self::DataType>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: Self::buffer_attributes(),
+        }
+    }
+}
+
+fn load_shader_module(name: &str) -> String {
+    let base_path = path::PathBuf::from("src/shading");
+    let module_path = base_path.join(name).with_extension("wgsl");
+    if !module_path.is_file() {
+        panic!("Shader not found: {:?}", module_path);
+    }
+
+    let mut module_source = String::new();
+    io::BufReader::new(fs::File::open(&module_path).unwrap())
+        .read_to_string(&mut module_source)
+        .unwrap();
+    let mut module_string = String::new();
+
+    let first_line = module_source.lines().next().unwrap();
+    if first_line.starts_with("//!include") {
+        for include in first_line.split_whitespace().skip(1) {
+            module_string.push_str(&*load_shader_module(include));
+        }
+    }
+
+    module_string.push_str(&module_source);
+    module_string
+}
+
+pub trait WGSLData {
+    fn string_definition(&self) -> String;
+}
+
+pub struct Shader {
+    name: String,
+    code: String,
+}
+
+impl Shader {
+    pub fn new(name: String) -> Self {
+        let code = load_shader_module(&name);
+        Self { name, code }
+    }
+
+    pub fn define_str(&mut self, name: &str, value: &str) -> &mut Self {
+        self.code = self.code.replace(name, value);
+        self
+    }
+
+    pub fn define_struct_array<T: WGSLData>(&mut self, name: &str, structs: &Vec<&T>) -> &mut Self {
+        let type_name = any::type_name::<T>().split("::").last().unwrap();
+        let array_length = structs.len();
+        let mut string_definition = String::new();
+
+        string_definition.push_str(&format!(
+			"var<private> {name}: array<{type_name}, {array_length}> = array<{type_name}, {array_length}>("
+		));
+
+        for struct_value in structs.iter() {
+            let struct_string = struct_value.string_definition();
+            string_definition.push_str(&format!("{type_name}({struct_string}),"));
+        }
+
+        string_definition.push_str(");");
+
+        self.define_once(name, &string_definition)
+    }
+
+    pub fn define_many<T: Display>(&mut self, defines: &HashMap<&String, T>) -> &mut Self {
+        let type_name = any::type_name::<T>();
+        for (name, value) in defines.iter() {
+            self.define_str(name, &format!("{type_name}({value})"));
+        }
+        self
+    }
+
+    pub fn load(&self) -> wgpu::ShaderModuleDescriptor {
+        wgpu::ShaderModuleDescriptor {
+            label: Some(&self.name),
+            source: wgpu::ShaderSource::Wgsl(borrow::Cow::Borrowed(&self.code)),
+        }
+    }
+
+    fn define_once(&mut self, name: &str, value: &str) -> &mut Self {
+        self.define_str(&format!("//!define {name}"), value)
     }
 }
