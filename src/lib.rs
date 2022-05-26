@@ -1,4 +1,4 @@
-use std::{any, borrow, collections::HashMap, fmt::Display, fs, io, io::Read, mem, path};
+use std::{any, borrow, collections::HashMap, fmt::Display, mem, path};
 // todo documentation for public interface.
 pub trait BufferData {
 	// todo add vertex to the name
@@ -15,29 +15,23 @@ pub trait BufferData {
 	}
 }
 
-fn load_shader_module(module_path: &str) -> String {
-	let module_path = path::PathBuf::from(module_path);
-	if !module_path.is_file() {
-		// todo convert to Result<...> and don't panic.
-		panic!("Shader not found: {:?}", module_path);
-	}
-
-	let mut module_source = String::new();
-	io::BufReader::new(fs::File::open(&module_path).unwrap()) // todo error handling, never unwrap().
-		.read_to_string(&mut module_source)
-		.unwrap();
+fn load_shader_module(
+	base_path: &path::Path,
+	module_path: &path::Path,
+) -> Result<String, ex::io::Error> {
+	let module_source = ex::fs::read_to_string(module_path)?;
 	let mut module_string = String::new();
 
 	let first_line = module_source.lines().next().unwrap(); // todo include should be possible everywhere and not just in the first line.
 	if first_line.starts_with("//!include") {
 		// todo proper string constant for every macro ("include", "define") and extract the "//!" prefix.
 		for include in first_line.split_whitespace().skip(1) {
-			module_string.push_str(&*load_shader_module(include));
+			module_string.push_str(&*load_shader_module(base_path, &path::Path::new(include))?);
 		}
 	}
 
 	module_string.push_str(&module_source);
-	module_string
+	Ok(module_string)
 }
 
 pub trait WGSLData {
@@ -51,9 +45,13 @@ pub struct Shader {
 }
 
 impl Shader {
-	pub fn new(name: String) -> Self {
-		let code = load_shader_module(&name);
-		Self { name, code }
+	pub fn new(name: &str) -> Result<Self, ex::io::Error> {
+		let module_path = path::Path::new(&name);
+		let code = load_shader_module(module_path.parent().unwrap(), module_path)?; // todo document the unwrap
+		Ok(Self {
+			name: name.to_string(),
+			code,
+		})
 	}
 
 	pub fn define_str(&mut self, name: &str, value: &str) -> &mut Self {
@@ -101,5 +99,45 @@ impl Shader {
 
 	fn define_once(&mut self, name: &str, value: &str) -> &mut Self {
 		self.define_str(&format!("//!define {name}"), value) // todo see //!include and follow suite.
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::io;
+
+	use crate::Shader;
+
+	#[test]
+	fn bad_path() {
+		assert_eq!(
+			Shader::new("test_shaders/missing.wgsl")
+				.err()
+				.unwrap()
+				.kind(),
+			io::ErrorKind::NotFound
+		);
+	}
+
+	#[test]
+	fn standard_include() {
+		assert_eq!(
+			Shader::new("test_shaders/includer.wgsl").unwrap().code,
+			format!(
+				"{}//!include test_shaders/included.wgsl",
+				Shader::new("test_shaders/included.wgsl").unwrap().code
+			)
+		);
+	}
+
+	#[test]
+	fn missing_include() {
+		assert_eq!(
+			Shader::new("test_shaders/missing_include.wgsl")
+				.err()
+				.unwrap()
+				.kind(),
+			io::ErrorKind::NotFound
+		);
 	}
 }
