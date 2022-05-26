@@ -21,16 +21,16 @@ fn load_shader_module(
 ) -> Result<String, ex::io::Error> {
 	let module_source = ex::fs::read_to_string(module_path)?;
 	let mut module_string = String::new();
-
-	let first_line = module_source.lines().next().unwrap(); // todo include should be possible everywhere and not just in the first line.
-	if first_line.starts_with("//!include") {
-		// todo proper string constant for every macro ("include", "define") and extract the "//!" prefix.
-		for include in first_line.split_whitespace().skip(1) {
-			module_string.push_str(&*load_shader_module(base_path, &path::Path::new(include))?);
+	for line in module_source.lines() {
+		if line.starts_with("//!include") {
+			// todo proper string constant for every macro ("include", "define") and extract the "//!" prefix.
+			for include in line.split_whitespace().skip(1) {
+				module_string.push_str(&load_shader_module(base_path, &path::Path::new(include))?);
+			}
+		} else {
+			module_string.push_str(line);
 		}
 	}
-
-	module_string.push_str(&module_source);
 	Ok(module_string)
 }
 
@@ -123,10 +123,7 @@ mod tests {
 	fn standard_include() {
 		assert_eq!(
 			Shader::new("test_shaders/includer.wgsl").unwrap().code,
-			format!(
-				"{}//!include test_shaders/included.wgsl",
-				Shader::new("test_shaders/included.wgsl").unwrap().code
-			)
+			Shader::new("test_shaders/included.wgsl").unwrap().code
 		);
 	}
 
@@ -139,5 +136,41 @@ mod tests {
 				.kind(),
 			io::ErrorKind::NotFound
 		);
+	}
+
+	#[test]
+	fn nested_include() {
+		assert_eq!(
+			Shader::new("test_shaders/nested_include.wgsl")
+				.unwrap()
+				.code,
+			Shader::new("test_shaders/includer.wgsl").unwrap().code
+		)
+	}
+
+	#[test]
+	fn multiple_includes() {
+		assert_eq!(
+			Shader::new("test_shaders/multiple_includes.wgsl")
+				.unwrap()
+				.code,
+			format!(
+				"{}{}",
+				Shader::new("test_shaders/included.wgsl").unwrap().code,
+				Shader::new("test_shaders/included2.wgsl").unwrap().code
+			)
+		)
+	}
+
+	#[test]
+	fn multiple_inline_includes() {
+		assert_eq!(
+			Shader::new("test_shaders/multiple_inline_includes.wgsl")
+				.unwrap()
+				.code,
+			Shader::new("test_shaders/multiple_includes.wgsl")
+				.unwrap()
+				.code
+		)
 	}
 }
