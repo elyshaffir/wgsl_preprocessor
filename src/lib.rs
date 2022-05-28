@@ -56,24 +56,27 @@ impl Shader {
 		})
 	}
 
-	pub fn apply_constant<T: Display>(&mut self, name: &str, value: T) -> &mut Self {
+	pub fn put_constant<T: Display>(&mut self, name: &str, value: T) -> &mut Self {
 		let type_name = any::type_name::<T>();
 		self.code = self.code.replace(name, &format!("{type_name}({value})"));
 		self
 	}
 
-	pub fn apply_constant_map<T: Display + Copy>(
+	pub fn put_constant_map<T: Display + Copy>(
 		&mut self,
 		constant_map: &HashMap<&str, T>,
 	) -> &mut Self {
 		constant_map.iter().for_each(|(name, &value)| {
-			self.apply_constant(name, value);
+			self.put_constant(name, value);
 		});
 		self
 	}
 
-	pub fn define_struct_array<T: WGSLType>(&mut self, name: &str, structs: &Vec<&T>) -> &mut Self {
-		// todo rename to define_constant_array or something
+	pub fn put_array_definition<T: WGSLType>(
+		&mut self,
+		name: &str,
+		structs: &Vec<&T>,
+	) -> &mut Self {
 		let type_name = any::type_name::<T>().split("::").last().unwrap(); // todo allow type name to be optionally specified in WGSLData.
 		let array_length = structs.len();
 		let mut string_definition = String::new();
@@ -180,8 +183,8 @@ mod tests {
 		assert_eq!(
 			Shader::new("test_shaders/set_constants.wgsl")
 				.unwrap()
-				.apply_constant("ONE", 1u32)
-				.apply_constant("TWO", 2u32)
+				.put_constant("ONE", 1u32)
+				.put_constant("TWO", 2u32)
 				.code,
 			Shader::new("test_shaders/set_constants_processed.wgsl")
 				.unwrap()
@@ -197,7 +200,7 @@ mod tests {
 		assert_eq!(
 			Shader::new("test_shaders/set_constants.wgsl")
 				.unwrap()
-				.apply_constant_map(&constants)
+				.put_constant_map(&constants)
 				.code,
 			Shader::new("test_shaders/set_constants_processed.wgsl")
 				.unwrap()
