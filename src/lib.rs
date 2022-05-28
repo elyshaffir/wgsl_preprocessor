@@ -5,6 +5,7 @@ const INCLUDE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "i
 const DEFINE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "define");
 
 // todo documentation for public interface.
+// todo reorder traits and methods to make sense.
 pub trait VertexBufferData {
 	type DataType;
 
@@ -38,6 +39,8 @@ fn load_shader_module(
 }
 
 pub trait WGSLType {
+	const TYPE_NAME: &'static str;
+
 	fn string_definition(&self) -> String;
 }
 
@@ -77,7 +80,7 @@ impl Shader {
 		name: &str,
 		structs: &Vec<&T>,
 	) -> &mut Self {
-		let type_name = any::type_name::<T>().split("::").last().unwrap(); // todo allow type name to be optionally specified in WGSLData.
+		let type_name = T::TYPE_NAME;
 		let array_length = structs.len();
 		let mut string_definition = String::new();
 
@@ -108,9 +111,8 @@ impl Shader {
 
 #[cfg(test)]
 mod tests {
+	use crate::{Shader, WGSLType};
 	use std::{collections::HashMap, io};
-
-	use crate::Shader;
 
 	#[test]
 	fn nonexistent() {
@@ -179,7 +181,7 @@ mod tests {
 	}
 
 	#[test]
-	fn set_constant() {
+	fn put_constant() {
 		assert_eq!(
 			Shader::new("test_shaders/set_constants.wgsl")
 				.unwrap()
@@ -193,7 +195,7 @@ mod tests {
 	}
 
 	#[test]
-	fn apply_constant_map() {
+	fn put_constant_map() {
 		let mut constants = HashMap::new();
 		constants.insert("ONE", 1u32);
 		constants.insert("TWO", 2u32);
@@ -218,5 +220,64 @@ mod tests {
 				.unwrap(),
 			"included"
 		);
+	}
+
+	#[test]
+	fn put_array_definition_structs() {
+		struct Struct {
+			pub data: [f32; 4],
+		}
+		impl WGSLType for Struct {
+			const TYPE_NAME: &'static str = "Struct";
+
+			fn string_definition(&self) -> String {
+				format!(
+					"vec4<f32>({})",
+					format!("{:?}", self.data).replace(&['[', ']'], "")
+				)
+			}
+		}
+		assert_eq!(
+			Shader::new("test_shaders/put_array_definition_structs.wgsl")
+				.unwrap()
+				.put_array_definition(
+					"STRUCT_ARRAY",
+					&vec![
+						&Struct {
+							data: [1.0, 2.0, 3.0, 4.0]
+						},
+						&Struct {
+							data: [1.5, 2.1, 3.7, 4.9]
+						}
+					]
+				)
+				.code,
+			Shader::new("test_shaders/put_array_definition_structs_processed.wgsl")
+				.unwrap()
+				.code
+		)
+	}
+
+	#[test]
+	fn put_array_definition_vectors() {
+		impl WGSLType for [f32; 4] {
+			const TYPE_NAME: &'static str = "vec4<f32>";
+
+			fn string_definition(&self) -> String {
+				format!("{:?}", self).replace(&['[', ']'], "")
+			}
+		}
+		assert_eq!(
+			Shader::new("test_shaders/put_array_definition_vectors.wgsl")
+				.unwrap()
+				.put_array_definition(
+					"VECTOR_ARRAY",
+					&vec![&[1.0, 2.0, 3.0, 4.0], &[1.5, 2.1, 3.7, 4.9]]
+				)
+				.code,
+			Shader::new("test_shaders/put_array_definition_vectors_processed.wgsl")
+				.unwrap()
+				.code
+		)
 	}
 }

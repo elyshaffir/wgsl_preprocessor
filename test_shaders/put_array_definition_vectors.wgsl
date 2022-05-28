@@ -1,0 +1,1 @@
+//!define VECTOR_ARRAY
