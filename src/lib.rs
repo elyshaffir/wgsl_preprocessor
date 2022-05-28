@@ -1,7 +1,6 @@
 use std::{any, borrow, collections::HashMap, fmt::Display, mem, path};
 // todo documentation for public interface.
-pub trait BufferData {
-	// todo add vertex to the name
+pub trait VertexBufferData {
 	type DataType;
 
 	fn buffer_attributes<'a>() -> &'a [wgpu::VertexAttribute];
