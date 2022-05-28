@@ -54,9 +54,19 @@ impl Shader {
 		})
 	}
 
-	pub fn define_str(&mut self, name: &str, value: &str) -> &mut Self {
-		// todo change to generic define (not just strings). Also, see define_many to see if this method is deprecated.
-		self.code = self.code.replace(name, value);
+	pub fn apply_constant<T: Display>(&mut self, name: &str, value: T) -> &mut Self {
+		let type_name = any::type_name::<T>();
+		self.code = self.code.replace(name, &format!("{type_name}({value})"));
+		self
+	}
+
+	pub fn apply_constant_map<T: Display + Copy>(
+		&mut self,
+		constant_map: &HashMap<&str, T>,
+	) -> &mut Self {
+		constant_map.iter().for_each(|(name, &value)| {
+			self.apply_constant(name, value);
+		});
 		self
 	}
 
@@ -77,15 +87,9 @@ impl Shader {
 
 		string_definition.push_str(");");
 
-		self.define_once(name, &string_definition)
-	}
-
-	pub fn define_many<T: Display>(&mut self, defines: &HashMap<&String, T>) -> &mut Self {
-		// todo rename to define and have as only way to define constants (ie. deprecate define_str)
-		let type_name = any::type_name::<T>();
-		for (name, value) in defines.iter() {
-			self.define_str(name, &format!("{type_name}({value})"));
-		}
+		self.code = self
+			.code
+			.replace(&format!("//!define {name}"), &string_definition); // todo see !include and follow suite.
 		self
 	}
 
@@ -96,22 +100,18 @@ impl Shader {
 			source: wgpu::ShaderSource::Wgsl(borrow::Cow::Borrowed(&self.code)),
 		}
 	}
-
-	fn define_once(&mut self, name: &str, value: &str) -> &mut Self {
-		self.define_str(&format!("//!define {name}"), value) // todo see //!include and follow suite.
-	}
 }
 
 #[cfg(test)]
 mod tests {
-	use std::io;
+	use std::{collections::HashMap, io};
 
 	use crate::Shader;
 
 	#[test]
-	fn bad_path() {
+	fn nonexistent() {
 		assert_eq!(
-			Shader::new("test_shaders/missing.wgsl")
+			Shader::new("test_shaders/nonexistent.wgsl")
 				.err()
 				.unwrap()
 				.kind(),
@@ -169,6 +169,36 @@ mod tests {
 				.unwrap()
 				.code,
 			Shader::new("test_shaders/multiple_includes.wgsl")
+				.unwrap()
+				.code
+		)
+	}
+
+	#[test]
+	fn set_constant() {
+		assert_eq!(
+			Shader::new("test_shaders/set_constants.wgsl")
+				.unwrap()
+				.apply_constant("ONE", 1u32)
+				.apply_constant("TWO", 2u32)
+				.code,
+			Shader::new("test_shaders/set_constants_processed.wgsl")
+				.unwrap()
+				.code
+		)
+	}
+
+	#[test]
+	fn apply_constant_map() {
+		let mut constants = HashMap::new();
+		constants.insert("ONE", 1u32);
+		constants.insert("TWO", 2u32);
+		assert_eq!(
+			Shader::new("test_shaders/set_constants.wgsl")
+				.unwrap()
+				.apply_constant_map(&constants)
+				.code,
+			Shader::new("test_shaders/set_constants_processed.wgsl")
 				.unwrap()
 				.code
 		)
