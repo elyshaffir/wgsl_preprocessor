@@ -38,16 +38,16 @@ pub trait WGSLType {
 }
 
 pub struct Shader {
-	name: String, // todo rename
-	code: String, // todo rename?
+	source_path: String,
+	code: String,
 }
 
 impl Shader {
-	pub fn new(name: &str) -> Result<Self, ex::io::Error> {
-		let module_path = path::Path::new(&name);
+	pub fn new(source_path: &str) -> Result<Self, ex::io::Error> {
+		let module_path = path::Path::new(&source_path);
 		let code = load_shader_module(module_path.parent().unwrap(), module_path)?; // todo document the unwrap
 		Ok(Self {
-			name: name.to_string(),
+			source_path: source_path.to_string(),
 			code,
 		})
 	}
@@ -91,10 +91,9 @@ impl Shader {
 		self
 	}
 
-	pub fn load(&self) -> wgpu::ShaderModuleDescriptor {
-		// todo rename to build() or some other builder pattern name
+	pub fn build(&self) -> wgpu::ShaderModuleDescriptor {
 		wgpu::ShaderModuleDescriptor {
-			label: Some(&self.name),
+			label: Some(&self.source_path.rsplit(['/', '.']).nth(1).unwrap()),
 			source: wgpu::ShaderSource::Wgsl(borrow::Cow::Borrowed(&self.code)),
 		}
 	}
@@ -200,5 +199,17 @@ mod tests {
 				.unwrap()
 				.code
 		)
+	}
+
+	#[test]
+	fn load_proper_label() {
+		assert_eq!(
+			Shader::new("test_shaders/included.wgsl")
+				.unwrap()
+				.build()
+				.label
+				.unwrap(),
+			"included"
+		);
 	}
 }
