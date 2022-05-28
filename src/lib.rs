@@ -1,4 +1,9 @@
 use std::{any, borrow, collections::HashMap, fmt::Display, mem, path};
+
+const INSTRUCTION_PREFIX: &str = "//!";
+const INCLUDE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "include");
+const DEFINE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "define");
+
 // todo documentation for public interface.
 pub trait VertexBufferData {
 	type DataType;
@@ -21,8 +26,7 @@ fn load_shader_module(
 	let module_source = ex::fs::read_to_string(module_path)?;
 	let mut module_string = String::new();
 	for line in module_source.lines() {
-		if line.starts_with("//!include") {
-			// todo proper string constant for every macro ("include", "define") and extract the "//!" prefix.
+		if line.starts_with(INCLUDE_INSTRUCTION) {
 			for include in line.split_whitespace().skip(1) {
 				module_string.push_str(&load_shader_module(base_path, &path::Path::new(include))?);
 			}
@@ -87,7 +91,7 @@ impl Shader {
 
 		self.code = self
 			.code
-			.replace(&format!("//!define {name}"), &string_definition); // todo see !include and follow suite.
+			.replace(&format!("{DEFINE_INSTRUCTION} {name}"), &string_definition);
 		self
 	}
 
