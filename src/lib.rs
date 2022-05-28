@@ -33,8 +33,7 @@ fn load_shader_module(
 	Ok(module_string)
 }
 
-pub trait WGSLData {
-	// todo rename to WGSLType or something.
+pub trait WGSLType {
 	fn string_definition(&self) -> String;
 }
 
@@ -69,7 +68,7 @@ impl Shader {
 		self
 	}
 
-	pub fn define_struct_array<T: WGSLData>(&mut self, name: &str, structs: &Vec<&T>) -> &mut Self {
+	pub fn define_struct_array<T: WGSLType>(&mut self, name: &str, structs: &Vec<&T>) -> &mut Self {
 		// todo rename to define_constant_array or something
 		let type_name = any::type_name::<T>().split("::").last().unwrap(); // todo allow type name to be optionally specified in WGSLData.
 		let array_length = structs.len();
