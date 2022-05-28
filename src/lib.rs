@@ -5,7 +5,6 @@ const INCLUDE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "i
 const DEFINE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "define");
 
 // todo documentation for public interface.
-// todo reorder traits and methods to make sense.
 pub trait VertexBufferData {
 	type DataType;
 
@@ -18,24 +17,6 @@ pub trait VertexBufferData {
 			attributes: Self::buffer_attributes(),
 		}
 	}
-}
-
-fn load_shader_module(
-	base_path: &path::Path,
-	module_path: &path::Path,
-) -> Result<String, ex::io::Error> {
-	let module_source = ex::fs::read_to_string(module_path)?;
-	let mut module_string = String::new();
-	for line in module_source.lines() {
-		if line.starts_with(INCLUDE_INSTRUCTION) {
-			for include in line.split_whitespace().skip(1) {
-				module_string.push_str(&load_shader_module(base_path, &path::Path::new(include))?);
-			}
-		} else {
-			module_string.push_str(line);
-		}
-	}
-	Ok(module_string)
 }
 
 pub trait WGSLType {
@@ -52,7 +33,7 @@ pub struct Shader {
 impl Shader {
 	pub fn new(source_path: &str) -> Result<Self, ex::io::Error> {
 		let module_path = path::Path::new(&source_path);
-		let code = load_shader_module(module_path.parent().unwrap(), module_path)?; // todo document the unwrap
+		let code = Self::load_shader_module(module_path.parent().unwrap(), module_path)?; // todo document the unwrap
 		Ok(Self {
 			source_path: source_path.to_string(),
 			code,
@@ -103,9 +84,36 @@ impl Shader {
 
 	pub fn build(&self) -> wgpu::ShaderModuleDescriptor {
 		wgpu::ShaderModuleDescriptor {
-			label: Some(&self.source_path.rsplit(['/', '.']).nth(1).unwrap()),
+			label: Some(
+				&self
+					.source_path
+					.rsplit(['/', '.'])
+					.nth(1)
+					.unwrap_or(&self.source_path),
+			),
 			source: wgpu::ShaderSource::Wgsl(borrow::Cow::Borrowed(&self.code)),
 		}
+	}
+
+	fn load_shader_module(
+		base_path: &path::Path,
+		module_path: &path::Path,
+	) -> Result<String, ex::io::Error> {
+		let module_source = ex::fs::read_to_string(module_path)?;
+		let mut module_string = String::new();
+		for line in module_source.lines() {
+			if line.starts_with(INCLUDE_INSTRUCTION) {
+				for include in line.split_whitespace().skip(1) {
+					module_string.push_str(&Self::load_shader_module(
+						base_path,
+						&path::Path::new(include),
+					)?);
+				}
+			} else {
+				module_string.push_str(line);
+			}
+		}
+		Ok(module_string)
 	}
 }
 
