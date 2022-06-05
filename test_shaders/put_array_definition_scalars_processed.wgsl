@@ -1,0 +1,1 @@
+var<private> SCALAR_ARRAY: array<i32, 2> = array<i32, 2>(1,0,);

@@ -1,0 +1,1 @@
+var<private> BOOL_ARRAY: array<bool, 2> = array<bool, 2>(true,false,);

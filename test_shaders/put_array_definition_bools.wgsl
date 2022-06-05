@@ -1,0 +1,1 @@
+//!define BOOL_ARRAY

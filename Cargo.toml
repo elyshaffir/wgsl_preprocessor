@@ -5,7 +5,14 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies]
+[dependencies] # TODO versions?
 wgpu = "*"
 ex = "*"
 const_format = "*"
+duplicate = "*"
+cgmath = { version = "*", optional = true }
+
+[features] # TODO document features in README or wherever featuers are documented
+default = []
+cgmath_vectors = ["dep:cgmath"]
+array_vectors = []
