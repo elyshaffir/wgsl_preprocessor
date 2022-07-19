@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies] # TODO versions?
+wgsl_type_derive = { path = "./wgsl_type_derive" }
 wgpu = "*"
 ex = "*"
 const_format = "*"
@@ -13,6 +14,6 @@ duplicate = "*"
 cgmath = { version = "*", optional = true }
 
 [features] # TODO document features in README or wherever featuers are documented
-default = []
+default = ["cgmath_vectors", "array_vectors"]
 cgmath_vectors = ["dep:cgmath"]
 array_vectors = []

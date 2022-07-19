@@ -1,0 +1,1 @@
+var<private> STRUCT_ARRAY: array<Struct, 2> = array<Struct, 2>(Struct(1u),Struct(2u),);

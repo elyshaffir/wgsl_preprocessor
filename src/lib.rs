@@ -4,8 +4,6 @@ const INSTRUCTION_PREFIX: &str = "//!";
 const INCLUDE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "include");
 const DEFINE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "define");
 
-// todo use crate type_info to implement WGSLType for structs automatically (attribute). fields need to implement WGSLType recursively.
-
 /// Type for data types that would be later put in a vertex buffer.
 pub trait VertexBufferData
 where
@@ -47,35 +45,46 @@ where
 /// Type for data types that can be defined in WGSL.
 /// [`WGSLType`] is already implemented for some primitive types.
 pub trait WGSLType {
-	/// Whether to cast the type when used inside an array, like in [`ShaderBuilder::put_array_definition`].
-	/// Shouldn't be modified, used only in the implementations of `u32`, `i32`, `f32`.
-	const NO_CAST_ARRAY: bool = false;
-
 	/// Returns the name of the type in WGSL syntax.
 	fn type_name() -> String;
 
+	/// Returns a string that declares a new instance of the type in WGSL syntax.
+	fn declaration() -> String;
+
 	/// Returns a string that defines the type in WGSL syntax.
-	fn string_definition(&self) -> String;
+	fn definition(&self) -> String;
 }
 
-#[duplicate::duplicate_item(wgsl_type; [u32]; [i32]; [f32])]
-impl WGSLType for wgsl_type {
-	const NO_CAST_ARRAY: bool = true;
-
+impl WGSLType for u32 {
 	fn type_name() -> String {
-		any::type_name::<wgsl_type>().to_string()
+		"u32".to_string()
 	}
 
-	fn string_definition(&self) -> String {
-		format!("{}({self})", Self::type_name())
+	fn declaration() -> String {
+		format!("")
+	}
+
+	fn definition(&self) -> String {
+		format!("{self}u")
 	}
 }
 
-#[cfg(all(feature = "cgmath_vectors", feature = "array_vectors"))]
-compile_error!(
-	"Feature \"cgmath_vectors\" and feature \"array_vectors\" cannot be enabled at the same time."
-);
+#[duplicate::duplicate_item(wgsl_type; [i32]; [f32])]
+impl WGSLType for wgsl_type {
+	fn type_name() -> String {
+		stringify!(wgsl_type).to_string()
+	}
 
+	fn declaration() -> String {
+		format!("") // todo
+	}
+
+	fn definition(&self) -> String {
+		format!("{self}")
+	}
+}
+
+// TODO implement array for Sized when this is disabled. Allow for creation of arrays easily that are not assumed to be vectors.
 #[cfg(feature = "array_vectors")]
 #[duplicate::duplicate_item(wgsl_type; [[u32; 2]]; [[i32; 2]]; [[f32; 2]]; [[u32; 3]]; [[i32; 3]]; [[f32; 3]]; [[u32; 4]]; [[i32; 4]]; [[f32; 4]])]
 impl WGSLType for wgsl_type {
@@ -90,7 +99,11 @@ impl WGSLType for wgsl_type {
 		)
 	}
 
-	fn string_definition(&self) -> String {
+	fn declaration() -> String {
+		format!("") // todo
+	}
+
+	fn definition(&self) -> String {
 		format!("{}({:?})", Self::type_name(), self).replace(&['[', ']'], "")
 	}
 }
@@ -109,7 +122,11 @@ impl WGSLType for wgsl_type {
 		)
 	}
 
-	fn string_definition(&self) -> String {
+	fn declaration() -> String {
+		format!("") // todo
+	}
+
+	fn definition(&self) -> String {
 		println!("{}", format!("{:?}", self));
 		format!(
 			"{}({})",
@@ -128,7 +145,11 @@ impl WGSLType for bool {
 		"bool".to_string()
 	}
 
-	fn string_definition(&self) -> String {
+	fn declaration() -> String {
+		format!("") // todo
+	}
+
+	fn definition(&self) -> String {
 		self.to_string()
 	}
 }
@@ -165,7 +186,7 @@ impl ShaderBuilder {
 	/// - `name` - Name of the constant; the string to replace in the code.
 	/// - `value` - Value of the constant.
 	pub fn put_constant(&mut self, name: &str, value: impl WGSLType) -> &mut Self {
-		self.source_string = self.source_string.replace(name, &value.string_definition());
+		self.source_string = self.source_string.replace(name, &value.definition());
 		self
 	}
 
@@ -178,6 +199,10 @@ impl ShaderBuilder {
 			self.put_constant(name, value);
 		});
 		self
+	}
+
+	pub fn put_struct_definition<T: WGSLType>(&mut self) -> &mut Self {
+		self.define(&T::type_name(), &T::declaration())
 	}
 
 	/// Defines a constant array of elements.
@@ -199,24 +224,12 @@ impl ShaderBuilder {
 		));
 
 		for struct_value in array.iter() {
-			let mut struct_definition = struct_value.string_definition();
-			if T::NO_CAST_ARRAY {
-				struct_definition = struct_definition
-					.rsplit(&['(', ')'])
-					.nth(1)
-					.unwrap_or(&string_definition)
-					.to_string()
-			}
-			string_definition.push_str(&struct_definition);
+			string_definition.push_str(&struct_value.definition());
 			string_definition.push(',');
 		}
 
 		string_definition.push_str(");");
-
-		self.source_string = self
-			.source_string
-			.replace(&format!("{DEFINE_INSTRUCTION} {name}"), &string_definition);
-		self
+		self.define(name, &string_definition)
 	}
 
 	/// Builds a [`wgpu::ShaderModuleDescriptor`] from the shader.
@@ -232,6 +245,13 @@ impl ShaderBuilder {
 			),
 			source: wgpu::ShaderSource::Wgsl(borrow::Cow::Borrowed(&self.source_string)),
 		}
+	}
+
+	fn define(&mut self, name: &str, string_definition: &str) -> &mut Self {
+		self.source_string = self
+			.source_string
+			.replace(&format!("{DEFINE_INSTRUCTION} {name}"), string_definition);
+		self
 	}
 
 	fn load_shader_module(
@@ -256,10 +276,12 @@ impl ShaderBuilder {
 	}
 }
 
+// TODO split tests into multiple modules
 #[cfg(test)]
 mod tests {
 	use crate::{ShaderBuilder, WGSLType};
 	use std::{collections::HashMap, io};
+	use wgsl_type_derive::WGSLType; // todo better import!
 
 	#[test]
 	fn nonexistent() {
@@ -380,6 +402,83 @@ mod tests {
 	}
 
 	#[test]
+	fn put_struct_definition_derive_with_scalar() {
+		#[derive(WGSLType)]
+		struct Struct {
+			data: u32,
+		}
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/put_struct_definition.wgsl")
+				.unwrap()
+				.put_struct_definition::<Struct>()
+				.source_string,
+			ShaderBuilder::new("test_shaders/put_struct_definition_with_scalar_processed.wgsl")
+				.unwrap()
+				.source_string
+		)
+	}
+
+	#[test]
+	fn put_struct_definition_derive_with_vector() {
+		#[derive(WGSLType)]
+		struct Struct {
+			data: [u32; 4],
+		}
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/put_struct_definition.wgsl")
+				.unwrap()
+				.put_struct_definition::<Struct>()
+				.source_string,
+			ShaderBuilder::new("test_shaders/put_struct_definition_with_vector_processed.wgsl")
+				.unwrap()
+				.source_string
+		)
+	}
+
+	#[test]
+	fn put_struct_definition_derive_with_multiple_members() {
+		#[derive(WGSLType)]
+		struct Struct {
+			data: [u32; 4],
+			more_data: [f32; 2],
+		}
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/put_struct_definition.wgsl")
+				.unwrap()
+				.put_struct_definition::<Struct>()
+				.source_string,
+			ShaderBuilder::new(
+				"test_shaders/put_struct_definition_with_multiple_members_processed.wgsl"
+			)
+			.unwrap()
+			.source_string
+		)
+	}
+
+	#[test]
+	fn put_struct_definition_derive_with_struct_member() {
+		#[derive(WGSLType)]
+		struct Data {
+			data: [i32; 4],
+		}
+		#[derive(WGSLType)]
+		struct Struct {
+			data: Data,
+		}
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/put_struct_definition.wgsl")
+				.unwrap()
+				.put_struct_definition::<Struct>()
+				.source_string,
+			ShaderBuilder::new(
+				"test_shaders/put_struct_definition_with_struct_member_processed.wgsl"
+			)
+			.unwrap()
+			.source_string
+		)
+	}
+
+	#[test]
 	fn put_array_definition_bools() {
 		assert_eq!(
 			ShaderBuilder::new("test_shaders/put_array_definition_bools.wgsl")
@@ -393,49 +492,13 @@ mod tests {
 	}
 
 	#[test]
-	fn put_array_definition_scalar() {
+	fn put_array_definition_scalars() {
 		assert_eq!(
 			ShaderBuilder::new("test_shaders/put_array_definition_scalars.wgsl")
 				.unwrap()
 				.put_array_definition("SCALAR_ARRAY", &vec![&1, &0])
 				.source_string,
 			ShaderBuilder::new("test_shaders/put_array_definition_scalars_processed.wgsl")
-				.unwrap()
-				.source_string
-		)
-	}
-
-	#[test]
-	fn put_array_definition_structs() {
-		struct Struct {
-			pub data: [f32; 4],
-		}
-		impl WGSLType for Struct {
-			fn type_name() -> String {
-				"Struct".to_string()
-			}
-
-			fn string_definition(&self) -> String {
-				format!("{}(vec4<f32>({:?}))", Self::type_name(), self.data)
-					.replace(&['[', ']'], "")
-			}
-		}
-		assert_eq!(
-			ShaderBuilder::new("test_shaders/put_array_definition_structs.wgsl")
-				.unwrap()
-				.put_array_definition(
-					"STRUCT_ARRAY",
-					&vec![
-						&Struct {
-							data: [1.0, 2.0, 3.0, 4.0]
-						},
-						&Struct {
-							data: [1.5, 2.1, 3.7, 4.9]
-						}
-					]
-				)
-				.source_string,
-			ShaderBuilder::new("test_shaders/put_array_definition_structs_processed.wgsl")
 				.unwrap()
 				.source_string
 		)
@@ -451,10 +514,10 @@ mod tests {
 					"VECTOR_ARRAY",
 					&vec![&[1.0, 2.0, 3.0, 4.0], &[1.5, 2.1, 3.7, 4.9]]
 				)
-				.code,
+				.source_string,
 			ShaderBuilder::new("test_shaders/put_array_definition_vectors_processed.wgsl")
 				.unwrap()
-				.code
+				.source_string
 		)
 	}
 
@@ -475,6 +538,130 @@ mod tests {
 			ShaderBuilder::new("test_shaders/put_array_definition_vectors_processed.wgsl")
 				.unwrap()
 				.source_string
+		)
+	}
+
+	#[test]
+	fn put_array_definition_structs_manual_implementation() {
+		struct Struct {
+			pub data: [f32; 4],
+		}
+		impl WGSLType for Struct {
+			fn type_name() -> String {
+				"Struct".to_string()
+			}
+
+			fn declaration() -> String {
+				format!("") // todo
+			}
+
+			fn definition(&self) -> String {
+				format!("{}(vec4<f32>({:?}))", Self::type_name(), self.data)
+					.replace(&['[', ']'], "")
+			}
+		}
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/put_array_definition_structs_with_vectors.wgsl")
+				.unwrap()
+				.put_array_definition(
+					"STRUCT_ARRAY",
+					&vec![
+						&Struct {
+							data: [1.0, 2.0, 3.0, 4.0]
+						},
+						&Struct {
+							data: [1.5, 2.1, 3.7, 4.9]
+						}
+					]
+				)
+				.source_string,
+			ShaderBuilder::new(
+				"test_shaders/put_array_definition_structs_with_vectors_processed.wgsl"
+			)
+			.unwrap()
+			.source_string
+		)
+	}
+
+	#[test]
+	fn put_array_definition_derive_structs_with_scalar() {
+		#[derive(WGSLType)]
+		struct Struct {
+			pub data: u32,
+		}
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/put_array_definition_structs_with_scalars.wgsl")
+				.unwrap()
+				.put_array_definition(
+					"STRUCT_ARRAY",
+					&vec![&Struct { data: 1 }, &Struct { data: 2 }]
+				)
+				.source_string,
+			ShaderBuilder::new(
+				"test_shaders/put_array_definition_structs_with_scalars_processed.wgsl"
+			)
+			.unwrap()
+			.source_string
+		)
+	}
+
+	#[cfg(feature = "array_vectors")]
+	#[test]
+	fn put_array_definition_derive_structs_with_array_vectors() {
+		#[derive(WGSLType)]
+		struct Struct {
+			pub data: [f32; 4],
+		}
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/put_array_definition_structs_with_vectors.wgsl")
+				.unwrap()
+				.put_array_definition(
+					"STRUCT_ARRAY",
+					&vec![
+						&Struct {
+							data: [1.0, 2.0, 3.0, 4.0]
+						},
+						&Struct {
+							data: [1.5, 2.1, 3.7, 4.9]
+						}
+					]
+				)
+				.source_string,
+			ShaderBuilder::new(
+				"test_shaders/put_array_definition_structs_with_vectors_processed.wgsl"
+			)
+			.unwrap()
+			.source_string
+		)
+	}
+
+	#[cfg(feature = "cgmath_vectors")]
+	#[test]
+	fn put_array_definition_derive_structs_with_cgmath_vectors() {
+		#[derive(WGSLType)]
+		struct Struct {
+			pub data: cgmath::Vector4<f32>,
+		}
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/put_array_definition_structs_with_vectors.wgsl")
+				.unwrap()
+				.put_array_definition(
+					"STRUCT_ARRAY",
+					&vec![
+						&Struct {
+							data: cgmath::Vector4::<f32>::new(1.0, 2.0, 3.0, 4.0)
+						},
+						&Struct {
+							data: cgmath::Vector4::<f32>::new(1.5, 2.1, 3.7, 4.9)
+						}
+					]
+				)
+				.source_string,
+			ShaderBuilder::new(
+				"test_shaders/put_array_definition_structs_with_vectors_processed.wgsl"
+			)
+			.unwrap()
+			.source_string
 		)
 	}
 }
