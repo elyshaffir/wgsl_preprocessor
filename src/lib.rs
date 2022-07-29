@@ -148,10 +148,6 @@ where
 /// Type for data types that can be defined in WGSL.
 /// [`WGSLType`] is already implemented for some primitive types.
 pub trait WGSLType {
-	/// Whether to cast the type when used inside an array, like in [`ShaderBuilder::put_array_definition`].
-	/// Shouldn't be modified, used only in the implementations of `u32`, `i32`, `f32`.
-	const NO_CAST_ARRAY: bool = false;
-
 	/// Returns the name of the type in WGSL syntax.
 	fn type_name() -> String;
 
@@ -159,23 +155,26 @@ pub trait WGSLType {
 	fn string_definition(&self) -> String;
 }
 
-#[duplicate::duplicate_item(wgsl_type; [u32]; [i32]; [f32])]
-impl WGSLType for wgsl_type {
-	const NO_CAST_ARRAY: bool = true;
+impl WGSLType for u32 {
+	fn type_name() -> String {
+		any::type_name::<u32>().to_string()
+	}
 
+	fn string_definition(&self) -> String {
+		format!("{self}u")
+	}
+}
+
+#[duplicate::duplicate_item(wgsl_type; [i32]; [f32])]
+impl WGSLType for wgsl_type {
 	fn type_name() -> String {
 		any::type_name::<wgsl_type>().to_string()
 	}
 
 	fn string_definition(&self) -> String {
-		format!("{}({self})", Self::type_name())
+		format!("{self}")
 	}
 }
-
-// #[cfg(all(feature = "cgmath_vectors", feature = "array_vectors"))]
-// compile_error!(
-// 	"Feature \"cgmath_vectors\" and feature \"array_vectors\" cannot be enabled at the same time."
-// );
 
 #[cfg(feature = "array_vectors")]
 #[duplicate::duplicate_item(wgsl_type; [[u32; 2]]; [[i32; 2]]; [[f32; 2]]; [[u32; 3]]; [[i32; 3]]; [[f32; 3]]; [[u32; 4]]; [[i32; 4]]; [[f32; 4]])]
@@ -300,16 +299,8 @@ impl ShaderBuilder {
 			"var<private> {name}: array<{type_name}, {array_length}> = array<{type_name}, {array_length}>("
 		));
 
-		for struct_value in array.iter() {
-			let mut struct_definition = struct_value.string_definition();
-			if T::NO_CAST_ARRAY {
-				struct_definition = struct_definition
-					.rsplit(&['(', ')'])
-					.nth(1)
-					.unwrap_or(&string_definition)
-					.to_string()
-			}
-			string_definition.push_str(&struct_definition);
+		for value in array.iter() {
+			string_definition.push_str(&value.string_definition());
 			string_definition.push(',');
 		}
 
@@ -352,6 +343,7 @@ impl ShaderBuilder {
 				}
 			} else {
 				module_string.push_str(line);
+				module_string.push('\n');
 			}
 		}
 		Ok(module_string)
