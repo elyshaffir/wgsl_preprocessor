@@ -83,6 +83,7 @@ ShaderBuilder::new("main.wgsl")
 			}
 		]
 	)
+	.build()
 ```
 The compiled contents would be identical to:
 ```wgsl
