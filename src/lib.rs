@@ -102,49 +102,11 @@ By default, none of the following features are enabled.
   This feature is similar to **array_vectors** but with [`cgmath`] vector objects like [`cgmath::Vector3<u32>`]
   which would be translated to `vec3<u32>`.
 */
-use std::{any, borrow, collections::HashMap, mem, path};
+use std::{any, borrow, collections::HashMap, path};
 
 const INSTRUCTION_PREFIX: &str = "//!";
 const INCLUDE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "include");
 const DEFINE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "define");
-
-/// Type for data types that would be later put in a vertex buffer.
-pub trait VertexBufferData
-where
-	Self: Sized,
-{
-	/// Generate the attributes of the [`wgpu::VertexBufferLayout`] that will be created for the implementic struct.
-	///
-	/// Example:
-	///
-	/// ```ignore
-	/// impl VertexBufferData for [f32; 4] {
-	/// 	fn buffer_attributes<'a>() -> &'a [wgpu::VertexAttribute] {
-	/// 		&wgpu::vertex_attr_array![0 => Float32x4]
-	/// 	}
-	/// }
-	/// ```
-	fn buffer_attributes<'a>() -> &'a [wgpu::VertexAttribute];
-
-	/// Generate a [`wgpu::VertexBufferLayout`] for the implementing struct.
-	///
-	/// Example:
-	///
-	/// ```ignore
-	/// let vertex_state = wgpu::VertexState {
-	/// 	module: ...,
-	/// 	entry_point: "...",
-	/// 	buffers: &[<[f32; 4]>::describe()],
-	/// }
-	/// ```
-	fn describe<'a>() -> wgpu::VertexBufferLayout<'a> {
-		wgpu::VertexBufferLayout {
-			array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
-			step_mode: wgpu::VertexStepMode::Vertex,
-			attributes: Self::buffer_attributes(),
-		}
-	}
-}
 
 /// Type for data types that can be defined in WGSL.
 /// [`WGSLType`] is already implemented for some primitive types.
