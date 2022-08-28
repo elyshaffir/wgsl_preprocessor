@@ -25,7 +25,7 @@ struct AnotherTestStruct {
 };
 
 ```
-After building `main.wgsl`, it's compiled contents would be identical to:
+With these `include` statements, `main.wgsl`, becomes:
 ```wgsl
 struct TestStruct {
 	test_data: vec4<f32>;
@@ -41,6 +41,26 @@ It is important to note that `test_shaders/main.wgsl` could also contain:
 //!include test_shaders/included2.wgsl
 ```
 The result would be the same.
+
+# Example: Define Macros
+
+Non-function-like macro definitions are supported, for example:
+```wgsl
+//!define u3 vec3<u32>
+@compute
+@workgroup_size(64)
+fn main(@builtin(global_invocation_id) id: u3) {
+	// ...
+}
+```
+With this `define` statement, the source becomes:
+```wgsl
+@compute
+@workgroup_size(64)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+	// ...
+}
+```
 
 # Example: Defining a Constant Struct Array
 
@@ -232,7 +252,8 @@ impl ShaderBuilder {
 	/// # Arguments
 	/// - `source_path` - Path to the root WGSL module.
 	///		All includes will be relative to the parent directory of the root WGSL module.
-	/// 	Code is generated recursively with attention to `include` statements like C's #include statement.
+	/// 	Code is generated recursively with attention to `include` and `define` statements.
+	/// 	See "Examples" for more details on include and macro functionality.
 	pub fn new(source_path: &str) -> Result<Self, ex::io::Error> {
 		let module_path = path::Path::new(&source_path);
 		let source_string = Self::load_shader_module(
@@ -318,6 +339,7 @@ impl ShaderBuilder {
 	) -> Result<String, ex::io::Error> {
 		let module_source = ex::fs::read_to_string(module_path)?;
 		let mut module_string = String::new();
+		let mut definitions: HashMap<String, String> = HashMap::new();
 		for line in module_source.lines() {
 			if line.starts_with(INCLUDE_INSTRUCTION) {
 				for include in line.split_whitespace().skip(1) {
@@ -326,11 +348,20 @@ impl ShaderBuilder {
 						&path::Path::new(include),
 					)?);
 				}
+			} else if let Some(captures) =
+				regex::Regex::new(&format!(r"{DEFINE_INSTRUCTION} (\S+) (\S+)"))
+					.unwrap()
+					.captures(line)
+			{
+				definitions.insert(captures[1].to_string(), captures[2].to_string());
 			} else {
 				module_string.push_str(line);
 				module_string.push('\n');
 			}
 		}
+		definitions.iter().for_each(|(name, value)| {
+			module_string = module_string.replace(name, value);
+		});
 		Ok(module_string)
 	}
 }
@@ -411,6 +442,18 @@ mod tests {
 				.unwrap()
 				.source_string,
 			ShaderBuilder::new("test_shaders/multiple_includes.wgsl")
+				.unwrap()
+				.source_string
+		)
+	}
+
+	#[test]
+	fn define() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/definer.wgsl")
+				.unwrap()
+				.source_string,
+			ShaderBuilder::new("test_shaders/defined.wgsl")
 				.unwrap()
 				.source_string
 		)

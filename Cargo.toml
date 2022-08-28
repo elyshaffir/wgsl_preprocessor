@@ -1,13 +1,13 @@
 [package]
 authors = ["Ely Shaffir"]
 name = "wgsl_preprocessor"
-version = "1.0.1"
+version = "1.1.0"
 edition = "2021"
 license = "GPL-2.0-or-later"
 description = "An unofficial preprocessor for WGSL written in Rust for WGPU."
 repository = "https://github.com/elyshaffir/wgsl_preprocessor"
 keywords = ["gamedev", "graphics", "wgsl", "wgpu", "shader"]
-categories = ["game-development"]
+categories = ["game-development", "graphics"]
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -18,6 +18,7 @@ ex = "0.1.3"
 const_format = "0.*"
 duplicate = "0.*"
 cgmath = { version = "0.*", optional = true }
+regex = "1.*"
 
 [features]
 default = []
