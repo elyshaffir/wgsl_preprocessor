@@ -48,15 +48,21 @@ Let's say some color constants are calculated before shader compile time and sho
 code for performance reasons.
 `main.wgsl` would contain:
 ```wgsl
+struct Struct {
+	data: vec4<f32>,
+}
 //!define STRUCT_ARRAY
 ```
 In the Rust code, `Struct` is defined, and given an implementation of [`WGSLType`] it can be translated to
 a WGSL struct with a single `vec4<f32>` member named `data`.
 The Rust code building and compiling the shaders will contain:
-```ignore
+```
+use wgsl_preprocessor::WGSLType;
+
 struct Struct {
 	pub data: [f32; 4],
 }
+
 impl WGSLType for Struct {
 	fn type_name() -> String {
 		"Struct".to_string()
@@ -69,7 +75,23 @@ impl WGSLType for Struct {
 }
 ```
 After building and compiling `main.wgsl` with the following array definition:
-```ignore
+```no_run
+use wgsl_preprocessor::ShaderBuilder;
+
+# use wgsl_preprocessor::WGSLType;
+# struct Struct {
+# 	pub data: [f32; 4],
+# }
+# impl WGSLType for Struct {
+# 	fn type_name() -> String {
+# 		"Struct".to_string()
+# 	}
+#
+# 	fn string_definition(&self) -> String {
+# 		format!("{}(vec4<f32>({:?}))", Self::type_name(), self.data)
+# 			.replace(&['[', ']'], "")
+# 	}
+# }
 ShaderBuilder::new("main.wgsl")
 	.unwrap()
 	.put_array_definition(
@@ -83,7 +105,7 @@ ShaderBuilder::new("main.wgsl")
 			}
 		]
 	)
-	.build()
+	.build();
 ```
 The compiled contents would be identical to:
 ```wgsl
