@@ -24,7 +24,7 @@ struct AnotherTestStruct {
 };
 
 ```
-After building `main.wgsl`, it's compiled contents would be identical to:
+With these `include` statements, `main.wgsl`, becomes:
 ```wgsl
 struct TestStruct {
 	test_data: vec4<f32>;
@@ -41,21 +41,47 @@ It is important to note that `test_shaders/main.wgsl` could also contain:
 ```
 The result would be the same.
 
+### Example: Define Macros
+
+Non-function-like macro definitions are supported, for example:
+```wgsl
+//!define u3 vec3<u32>
+@compute
+@workgroup_size(64)
+fn main(@builtin(global_invocation_id) id: u3) {
+	// ...
+}
+```
+With this `define` statement, the source becomes:
+```wgsl
+@compute
+@workgroup_size(64)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+	// ...
+}
+```
+
 ### Example: Defining a Constant Struct Array
 
 Let's say some color constants are calculated before shader compile time and should be injected into the
 code for performance reasons.
 `main.wgsl` would contain:
 ```wgsl
+struct Struct {
+	data: vec4<f32>,
+}
 //!define STRUCT_ARRAY
 ```
 In the Rust code, `Struct` is defined, and given an implementation of [`WGSLType`] it can be translated to
 a WGSL struct with a single `vec4<f32>` member named `data`.
 The Rust code building and compiling the shaders will contain:
 ```rust
+use wgsl_preprocessor::WGSLType;
+
 struct Struct {
 	pub data: [f32; 4],
 }
+
 impl WGSLType for Struct {
 	fn type_name() -> String {
 		"Struct".to_string()
@@ -69,6 +95,8 @@ impl WGSLType for Struct {
 ```
 After building and compiling `main.wgsl` with the following array definition:
 ```rust
+use wgsl_preprocessor::ShaderBuilder;
+
 ShaderBuilder::new("main.wgsl")
 	.unwrap()
 	.put_array_definition(
@@ -82,7 +110,7 @@ ShaderBuilder::new("main.wgsl")
 			}
 		]
 	)
-	.build()
+	.build();
 ```
 The compiled contents would be identical to:
 ```wgsl
