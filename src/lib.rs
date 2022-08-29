@@ -156,7 +156,7 @@ pub trait WGSLType {
 	/// Returns the name of the type in WGSL syntax.
 	fn type_name() -> String;
 
-	/// Returns a string that defines the type in WGSL syntax.
+	/// Returns a string that creates an instance of the type in WGSL syntax.
 	fn string_definition(&self) -> String;
 }
 
@@ -259,7 +259,8 @@ impl ShaderBuilder {
 		let source_string = Self::load_shader_module(
 			module_path.parent().unwrap_or(path::Path::new("./")),
 			module_path,
-		)?;
+		)?
+		.0;
 		Ok(Self {
 			source_string,
 			source_path: source_path.to_string(),
@@ -336,17 +337,17 @@ impl ShaderBuilder {
 	fn load_shader_module(
 		base_path: &path::Path,
 		module_path: &path::Path,
-	) -> Result<String, ex::io::Error> {
+	) -> Result<(String, HashMap<String, String>), ex::io::Error> {
 		let module_source = ex::fs::read_to_string(module_path)?;
 		let mut module_string = String::new();
 		let mut definitions: HashMap<String, String> = HashMap::new();
 		for line in module_source.lines() {
 			if line.starts_with(INCLUDE_INSTRUCTION) {
 				for include in line.split_whitespace().skip(1) {
-					module_string.push_str(&Self::load_shader_module(
-						base_path,
-						&path::Path::new(include),
-					)?);
+					let (included_module_string, included_definitions) =
+						Self::load_shader_module(base_path, &path::Path::new(include))?;
+					module_string.push_str(&included_module_string);
+					definitions.extend(included_definitions);
 				}
 			} else if let Some(captures) =
 				regex::Regex::new(&format!(r"{DEFINE_INSTRUCTION} (\S+) (\S+)"))
@@ -362,7 +363,7 @@ impl ShaderBuilder {
 		definitions.iter().for_each(|(name, value)| {
 			module_string = module_string.replace(name, value);
 		});
-		Ok(module_string)
+		Ok((module_string, definitions))
 	}
 }
 
@@ -456,6 +457,18 @@ mod tests {
 			ShaderBuilder::new("test_shaders/defined.wgsl")
 				.unwrap()
 				.source_string
+		)
+	}
+
+	#[test]
+	fn include_define() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/included_define.wgsl")
+				.unwrap()
+				.source_string,
+			ShaderBuilder::new("test_shaders/included_define_processed.wgsl")
+				.unwrap()
+				.source_string,
 		)
 	}
 
