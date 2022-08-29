@@ -1,7 +1,7 @@
 [package]
 authors = ["Ely Shaffir"]
 name = "wgsl_preprocessor"
-version = "1.1.2"
+version = "1.1.3"
 edition = "2021"
 license = "GPL-2.0-or-later"
 description = "An unofficial preprocessor for WGSL written in Rust for WGPU."
@@ -19,6 +19,7 @@ const_format = "0.*"
 duplicate = "0.*"
 cgmath = { version = "0.*", optional = true }
 regex = "1.*"
+lazy_static = "1.*"
 
 [features]
 default = []

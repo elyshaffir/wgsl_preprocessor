@@ -1,0 +1,1 @@
+struct Struct { data: vec4<f32>, }

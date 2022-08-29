@@ -60,7 +60,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 	// ...
 }
 ```
-
+Multi-line macros are not yet supported.
 ### Example: Defining a Constant Struct Array
 
 Let's say some color constants are calculated before shader compile time and should be injected into the

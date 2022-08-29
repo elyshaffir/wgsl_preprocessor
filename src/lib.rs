@@ -61,6 +61,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 	// ...
 }
 ```
+Multi-line macros are not yet supported.
 
 # Example: Defining a Constant Struct Array
 
@@ -149,6 +150,9 @@ use std::{any, borrow, collections::HashMap, path};
 const INSTRUCTION_PREFIX: &str = "//!";
 const INCLUDE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "include");
 const DEFINE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "define");
+lazy_static::lazy_static! {
+	static ref MACRO_REGEX: regex::Regex = regex::Regex::new(&format!(r"{DEFINE_INSTRUCTION} (\S+) (.+)")).unwrap();
+}
 
 /// Type for data types that can be defined in WGSL.
 /// [`WGSLType`] is already implemented for some primitive types.
@@ -349,11 +353,7 @@ impl ShaderBuilder {
 					module_string.push_str(&included_module_string);
 					definitions.extend(included_definitions);
 				}
-			} else if let Some(captures) =
-				regex::Regex::new(&format!(r"{DEFINE_INSTRUCTION} (\S+) (\S+)"))
-					.unwrap()
-					.captures(line)
-			{
+			} else if let Some(captures) = MACRO_REGEX.captures(line) {
 				definitions.insert(captures[1].to_string(), captures[2].to_string());
 			} else {
 				module_string.push_str(line);
@@ -467,6 +467,18 @@ mod tests {
 				.unwrap()
 				.source_string,
 			ShaderBuilder::new("test_shaders/included_define_processed.wgsl")
+				.unwrap()
+				.source_string,
+		)
+	}
+
+	#[test]
+	fn define_with_spaces() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/define_with_spaces.wgsl")
+				.unwrap()
+				.source_string,
+			ShaderBuilder::new("test_shaders/define_with_spaces_processed.wgsl")
 				.unwrap()
 				.source_string,
 		)
