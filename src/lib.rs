@@ -150,6 +150,10 @@ use std::{any, borrow, collections::HashMap, path};
 const INSTRUCTION_PREFIX: &str = "//!";
 const INCLUDE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "include");
 const DEFINE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "define");
+const IFDEF_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "ifdef");
+const IFNDEF_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "ifndef");
+const ELSE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "else");
+const ENDIF_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "endif");
 lazy_static::lazy_static! {
 	static ref MACRO_REGEX: regex::Regex = regex::Regex::new(&format!(r"{DEFINE_INSTRUCTION} (\S+) (.+)")).unwrap();
 }
@@ -338,6 +342,59 @@ impl ShaderBuilder {
 		}
 	}
 
+	/// parses 
+	/// 
+	/// `//!ifdef SOME_DEFINE`
+	/// `//!ifndef SOME_DEFINE` 
+	/// `//!else`
+	/// `//!endif`
+	/// 
+	/// similar to c or glsl
+	/// 
+	/// # Arguments
+	/// - `defines` - list of strings which equal the defines in wgsl
+	pub fn parse_defines(&mut self, defines: &[String]) -> &mut Self {
+
+		let lines = self.source_string.lines();
+		let mut fin: Vec<String> = vec![];
+
+		let mut add = true;
+		
+		for line in lines {
+			let line = line.trim();
+	
+			if line.starts_with(ELSE_INSTRUCTION) {
+				add = !add;
+				continue;
+			}
+			else if line.starts_with(ENDIF_INSTRUCTION) {
+				add = true;
+				continue;
+			}
+	
+			if line.starts_with(IFDEF_INSTRUCTION) {
+				let def = defines.contains(&line.split(' ').nth(1).unwrap().into());
+	
+				add = def;
+				continue;
+			}
+			else if line.starts_with(IFNDEF_INSTRUCTION) {
+				let def = !defines.contains(&line.split(' ').nth(1).unwrap().into());
+	
+				add = def;
+				continue;
+			}
+	
+			if add {
+				fin.push(line.to_owned() + if line == "\n" || line == "" {""} else {"\n"});
+			}
+		}
+
+		self.source_string = fin.concat();
+
+		self
+	}
+
 	fn load_shader_module(
 		base_path: &path::Path,
 		module_path: &path::Path,
@@ -371,6 +428,19 @@ impl ShaderBuilder {
 mod tests {
 	use crate::{ShaderBuilder, WGSLType};
 	use std::{collections::HashMap, io};
+
+	#[test]
+	fn defines() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/defines.wgsl")
+				.unwrap()
+				.parse_defines(&["TRUE".into()])
+				.source_string,
+			ShaderBuilder::new("test_shaders/defines_result.wgsl")
+				.unwrap()
+				.source_string
+		)
+	}
 
 	#[test]
 	fn nonexistent() {
