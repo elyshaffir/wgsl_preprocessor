@@ -546,16 +546,16 @@ mod tests {
 		assert_eq!(
 			ShaderBuilder::new("test_shaders/bind_group_gen.wgsl")
 				.unwrap()
-				.bind_group_from_layout(0, &wgpu::BindGroupLayoutDescriptor {
-					label: Some("layout_desc"), 
-					entries: &[wgpu::BindGroupLayoutEntry {
-						binding: 0, 
-						visibility: wgpu::ShaderStages::FRAGMENT, 
-						ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), 
-						count: None}]
-					}, 
-					vec![("some_val".into(), "vec3<f32>".into())]
-				)
+				.bind_group_from_layout(0, &wgpu::BindGroupLayoutDescriptor {label: Some("layout_desc"), entries: &[wgpu::BindGroupLayoutEntry {binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering) , count: None}, 
+				wgpu::BindGroupLayoutEntry {
+					binding: 1,
+					visibility: wgpu::ShaderStages::VERTEX,
+					ty: wgpu::BindingType::Buffer { 
+						ty: wgpu::BufferBindingType::Uniform, 
+						has_dynamic_offset: false, 
+						min_binding_size: None },
+					count: None,
+				}]}, vec![("some_sampler".into(), "sampler".into()), ("some_val".into(), "vec3<f32>".into())])
 				.source_string,
 			ShaderBuilder::new("test_shaders/bind_group_gen_result.wgsl")
 				.unwrap()
