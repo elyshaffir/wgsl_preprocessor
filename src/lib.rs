@@ -145,7 +145,9 @@ By default, none of the following features are enabled.
   This feature is similar to **array_vectors** but with [`cgmath`] vector objects like [`cgmath::Vector3<u32>`]
   which would be translated to `vec3<u32>`.
 */
-use std::{any, borrow, collections::HashMap, path};
+use std::{any, borrow, collections::HashMap, path, vec};
+
+use wgpu::BindGroupLayoutDescriptor;
 
 const INSTRUCTION_PREFIX: &str = "//!";
 const INCLUDE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "include");
@@ -342,6 +344,90 @@ impl ShaderBuilder {
 		}
 	}
 
+	pub fn bind_group_from_layout(&mut self, bind_group_id: u32, layout: &BindGroupLayoutDescriptor, names_types: Vec<(String, String)>) -> &mut Self {
+
+		let mut bind_group_strings: Vec<String> = vec![];
+
+		for (i, entry) in layout.entries.iter().enumerate() {
+			let bin = entry.binding;
+			let arr = entry.count.is_some();
+
+			let ty = match entry.ty {
+				wgpu::BindingType::Buffer { 
+					ty, 
+					has_dynamic_offset: _,
+					min_binding_size: _
+				} => {
+					let ty = match ty {
+						wgpu::BufferBindingType::Uniform => "<uniform>",
+						wgpu::BufferBindingType::Storage { read_only } => {
+							if read_only {
+								"<storage, read>"
+							}
+							else {
+								"<storage, read_write>"
+							}
+						}
+					};
+
+
+					(ty, names_types[i].1.clone())
+				}
+
+				wgpu::BindingType::Sampler(_) => {
+					("", "sampler".into())
+				}
+
+				wgpu::BindingType::StorageTexture { 
+					access, 
+					format, 
+					view_dimension: _
+				} => {
+					let format = get_texture_format(format);
+
+					let access = match access {
+						wgpu::StorageTextureAccess::ReadOnly => "read",
+						wgpu::StorageTextureAccess::WriteOnly => "write",
+						wgpu::StorageTextureAccess::ReadWrite => "read_write",
+					};
+
+
+					("", format!("texture_storage_2d<{format}, {access}>"))
+				}
+
+				wgpu::BindingType::Texture { 
+					sample_type, 
+					view_dimension: _, 
+					multisampled: _ 
+				} => {
+					use wgpu::TextureSampleType::*;
+					let ty = match sample_type {
+						Float {
+							filterable: _
+						} => "texture_2d<f32>",
+						Depth => "texture_depth_2d",
+						Sint => "texture_2d<i32>",
+						Uint => "texture_2d<u32>",
+					};
+
+					("", ty.into())
+				}
+			};
+
+			if arr {
+				todo!("array support")
+			}
+			bind_group_strings.push(format!("@group({bind_group_id}) @binding({bin})\n"));
+			bind_group_strings.push(
+				["var", ty.0, " ", names_types[i].0.as_str(), ": ", ty.1.as_str(), ";\n"].concat()
+			);
+		}
+		let group = bind_group_strings.concat();
+
+		self.source_string = [group, self.source_string.clone()].concat();
+		self
+	}
+
 	/// parses 
 	/// 
 	/// `//!ifdef SOME_DEFINE`
@@ -424,10 +510,58 @@ impl ShaderBuilder {
 	}
 }
 
+fn get_texture_format(format: wgpu::TextureFormat) -> &'static str {
+	use wgpu::TextureFormat::*;
+	match format  {
+		R8Unorm | R8Snorm | Rg8Snorm | Rg8Unorm |
+		Rgba8Unorm | Rgba8UnormSrgb | Bgra8Unorm |
+		Bgra8UnormSrgb | Etc2Rgb8Unorm | Etc2Rgb8UnormSrgb |
+		Etc2Rgba8Unorm | Etc2Rgba8UnormSrgb | Rgba8Snorm |
+		R16Float | Rg16Float | Rgba16Float | R32Float |
+		Rg32Float | Rgba32Float | Depth32Float | Depth32FloatStencil8 => {
+			"f32"
+		} 
+
+		R8Uint | Rg8Uint | Rgba8Uint | R16Uint | Rg16Uint |
+		Rgba16Uint | R32Uint | Rg32Uint | Rgba32Uint => {
+			"u32"
+		}
+
+		R8Sint | Rg8Sint | Rgba8Sint | R16Sint | Rg16Sint |
+		Rgba16Sint | R32Sint | Rg32Sint | Rgba32Sint => {
+			"i32"
+		}
+
+		_ => panic!("not supported")
+	}
+} 
+
 #[cfg(test)]
 mod tests {
 	use crate::{ShaderBuilder, WGSLType};
 	use std::{collections::HashMap, io};
+
+	#[test]
+	fn bind_group_gen() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/bind_group_gen.wgsl")
+				.unwrap()
+				.bind_group_from_layout(0, &wgpu::BindGroupLayoutDescriptor {label: Some("layout_desc"), entries: &[wgpu::BindGroupLayoutEntry {binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering) , count: None}, 
+				wgpu::BindGroupLayoutEntry {
+					binding: 1,
+					visibility: wgpu::ShaderStages::VERTEX,
+					ty: wgpu::BindingType::Buffer { 
+						ty: wgpu::BufferBindingType::Uniform, 
+						has_dynamic_offset: false, 
+						min_binding_size: None },
+					count: None,
+				}]}, vec![("some_sampler".into(), "sampler".into()), ("some_val".into(), "vec3<f32>".into())])
+				.source_string,
+			ShaderBuilder::new("test_shaders/bind_group_gen_result.wgsl")
+				.unwrap()
+				.source_string
+		)
+	}
 
 	#[test]
 	fn defines() {
