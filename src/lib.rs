@@ -344,7 +344,15 @@ impl ShaderBuilder {
 		}
 	}
 
-	pub fn bind_group_from_layout(&mut self, bind_group_id: u32, layout: &BindGroupLayoutDescriptor, names_types: Vec<(String, String)>) -> &mut Self {
+	pub fn bind_groups_from_layouts(&mut self, layouts: &[(BindGroupLayoutDescriptor, Vec<(String, String)>)]) -> &mut Self {
+		for (i, layout) in layouts.iter().enumerate() {
+			self.bind_group_from_layout(i as u32, &layout.0, &layout.1);
+		}
+
+		self
+	}
+
+	pub fn bind_group_from_layout(&mut self, bind_group_id: u32, layout: &BindGroupLayoutDescriptor, names_types: &Vec<(String, String)>) -> &mut Self {
 
 		let mut bind_group_strings: Vec<String> = vec![];
 
@@ -555,7 +563,7 @@ mod tests {
 						has_dynamic_offset: false, 
 						min_binding_size: None },
 					count: None,
-				}]}, vec![("some_sampler".into(), "sampler".into()), ("some_val".into(), "vec3<f32>".into())])
+				}]}, &vec![("some_sampler".into(), "sampler".into()), ("some_val".into(), "vec3<f32>".into())])
 				.source_string,
 			ShaderBuilder::new("test_shaders/bind_group_gen_result.wgsl")
 				.unwrap()
