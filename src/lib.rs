@@ -113,7 +113,7 @@ use wgsl_preprocessor::ShaderBuilder;
 # 			.replace(&['[', ']'], "")
 # 	}
 # }
-ShaderBuilder::new("main.wgsl")
+ShaderBuilder::new("main.wgsl", None)
 	.unwrap()
 	.put_array_definition(
 		"STRUCT_ARRAY",
@@ -155,9 +155,8 @@ of the vaild definitions (this is designed for compatability with the bitflags c
 ```no_run
 use wgsl_preprocessor::ShaderBuilder;
 
-ShaderBuilder::new("main.wgsl")
+ShaderBuilder::new("main.wgsl", Some(&["THREE_DIMENTIONAL".into()]))
 	.unwrap()
-	.parse_defines(&["THREE_DIMENTIONAL".into()])
 	.build();
 ```
 The output will then be identical to:
@@ -297,11 +296,13 @@ impl ShaderBuilder {
 	///		All includes will be relative to the parent directory of the root WGSL module.
 	/// 	Code is generated recursively with attention to `include` and `define` statements.
 	/// 	See "Examples" for more details on include and macro functionality.
-	pub fn new(source_path: &str) -> Result<Self, ex::io::Error> {
+	/// - `defines` - list of strings which indicate the valid defines in wgsl
+	pub fn new(source_path: &str, defines: Option<&[String]>) -> Result<Self, ex::io::Error> {
 		let module_path = path::Path::new(&source_path);
 		let source_string = Self::load_shader_module(
 			module_path.parent().unwrap_or(path::Path::new("./")),
 			module_path,
+			defines,
 		)?
 		.0;
 		Ok(Self {
@@ -388,8 +389,8 @@ impl ShaderBuilder {
 	///
 	/// # Arguments
 	/// - `defines` - list of strings which equal the defines in wgsl
-	pub fn parse_defines(&mut self, defines: &[String]) -> &mut Self {
-		let lines = self.source_string.lines();
+	fn parse_defines(source_string: &mut String, defines: &[String]) {
+		let lines = source_string.lines();
 		let mut fin: Vec<String> = vec![];
 
 		let mut add = true;
@@ -422,23 +423,25 @@ impl ShaderBuilder {
 			}
 		}
 
-		self.source_string = fin.concat();
-
-		self
+		*source_string = fin.concat();
 	}
 
 	fn load_shader_module(
 		base_path: &path::Path,
 		module_path: &path::Path,
+		defines: Option<&[String]>,
 	) -> Result<(String, HashMap<String, String>), ex::io::Error> {
-		let module_source = ex::fs::read_to_string(module_path)?;
+		let mut module_source = ex::fs::read_to_string(module_path)?;
+		if let Some(defines) = defines {
+			Self::parse_defines(&mut module_source, defines);
+		}
 		let mut module_string = String::new();
 		let mut definitions: HashMap<String, String> = HashMap::new();
 		for line in module_source.lines() {
 			if line.starts_with(INCLUDE_INSTRUCTION) {
 				for include in line.split_whitespace().skip(1) {
 					let (included_module_string, included_definitions) =
-						Self::load_shader_module(base_path, &path::Path::new(include))?;
+						Self::load_shader_module(base_path, &path::Path::new(include), defines)?;
 					module_string.push_str(&included_module_string);
 					definitions.extend(included_definitions);
 				}
@@ -464,11 +467,13 @@ mod tests {
 	#[test]
 	fn conditional_compilation() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/conditional_compilation.wgsl")
-				.unwrap()
-				.parse_defines(&["THREE_DIMENTIONAL".into()])
-				.source_string,
-			ShaderBuilder::new("test_shaders/conditional_compilation_processed.wgsl")
+			ShaderBuilder::new(
+				"test_shaders/conditional_compilation.wgsl",
+				Some(&["THREE_DIMENTIONAL".into()])
+			)
+			.unwrap()
+			.source_string,
+			ShaderBuilder::new("test_shaders/conditional_compilation_processed.wgsl", None)
 				.unwrap()
 				.source_string
 		)
@@ -477,7 +482,7 @@ mod tests {
 	#[test]
 	fn nonexistent() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/nonexistent.wgsl")
+			ShaderBuilder::new("test_shaders/nonexistent.wgsl", None)
 				.err()
 				.unwrap()
 				.kind(),
@@ -488,10 +493,10 @@ mod tests {
 	#[test]
 	fn standard_include() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/includer.wgsl")
+			ShaderBuilder::new("test_shaders/includer.wgsl", None)
 				.unwrap()
 				.source_string,
-			ShaderBuilder::new("test_shaders/included.wgsl")
+			ShaderBuilder::new("test_shaders/included.wgsl", None)
 				.unwrap()
 				.source_string
 		);
@@ -500,7 +505,7 @@ mod tests {
 	#[test]
 	fn missing_include() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/missing_include.wgsl")
+			ShaderBuilder::new("test_shaders/missing_include.wgsl", None)
 				.err()
 				.unwrap()
 				.kind(),
@@ -511,10 +516,10 @@ mod tests {
 	#[test]
 	fn nested_include() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/nested_include.wgsl")
+			ShaderBuilder::new("test_shaders/nested_include.wgsl", None)
 				.unwrap()
 				.source_string,
-			ShaderBuilder::new("test_shaders/includer.wgsl")
+			ShaderBuilder::new("test_shaders/includer.wgsl", None)
 				.unwrap()
 				.source_string
 		)
@@ -523,15 +528,15 @@ mod tests {
 	#[test]
 	fn multiple_includes() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/multiple_includes.wgsl")
+			ShaderBuilder::new("test_shaders/multiple_includes.wgsl", None)
 				.unwrap()
 				.source_string,
 			format!(
 				"{}{}",
-				ShaderBuilder::new("test_shaders/included.wgsl")
+				ShaderBuilder::new("test_shaders/included.wgsl", None)
 					.unwrap()
 					.source_string,
-				ShaderBuilder::new("test_shaders/included2.wgsl")
+				ShaderBuilder::new("test_shaders/included2.wgsl", None)
 					.unwrap()
 					.source_string
 			)
@@ -541,10 +546,10 @@ mod tests {
 	#[test]
 	fn multiple_inline_includes() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/multiple_inline_includes.wgsl")
+			ShaderBuilder::new("test_shaders/multiple_inline_includes.wgsl", None)
 				.unwrap()
 				.source_string,
-			ShaderBuilder::new("test_shaders/multiple_includes.wgsl")
+			ShaderBuilder::new("test_shaders/multiple_includes.wgsl", None)
 				.unwrap()
 				.source_string
 		)
@@ -553,10 +558,10 @@ mod tests {
 	#[test]
 	fn define() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/definer.wgsl")
+			ShaderBuilder::new("test_shaders/definer.wgsl", None)
 				.unwrap()
 				.source_string,
-			ShaderBuilder::new("test_shaders/defined.wgsl")
+			ShaderBuilder::new("test_shaders/defined.wgsl", None)
 				.unwrap()
 				.source_string
 		)
@@ -565,10 +570,10 @@ mod tests {
 	#[test]
 	fn include_define() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/included_define.wgsl")
+			ShaderBuilder::new("test_shaders/included_define.wgsl", None)
 				.unwrap()
 				.source_string,
-			ShaderBuilder::new("test_shaders/included_define_processed.wgsl")
+			ShaderBuilder::new("test_shaders/included_define_processed.wgsl", None)
 				.unwrap()
 				.source_string,
 		)
@@ -577,10 +582,10 @@ mod tests {
 	#[test]
 	fn define_with_spaces() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/define_with_spaces.wgsl")
+			ShaderBuilder::new("test_shaders/define_with_spaces.wgsl", None)
 				.unwrap()
 				.source_string,
-			ShaderBuilder::new("test_shaders/define_with_spaces_processed.wgsl")
+			ShaderBuilder::new("test_shaders/define_with_spaces_processed.wgsl", None)
 				.unwrap()
 				.source_string,
 		)
@@ -589,12 +594,12 @@ mod tests {
 	#[test]
 	fn put_constant() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/set_constants.wgsl")
+			ShaderBuilder::new("test_shaders/set_constants.wgsl", None)
 				.unwrap()
 				.put_constant("ONE", 1u32)
 				.put_constant("TWO", 2u32)
 				.source_string,
-			ShaderBuilder::new("test_shaders/set_constants_processed.wgsl")
+			ShaderBuilder::new("test_shaders/set_constants_processed.wgsl", None)
 				.unwrap()
 				.source_string
 		)
@@ -606,11 +611,11 @@ mod tests {
 		constants.insert("ONE", 1u32);
 		constants.insert("TWO", 2u32);
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/set_constants.wgsl")
+			ShaderBuilder::new("test_shaders/set_constants.wgsl", None)
 				.unwrap()
 				.put_constant_map(&constants)
 				.source_string,
-			ShaderBuilder::new("test_shaders/set_constants_processed.wgsl")
+			ShaderBuilder::new("test_shaders/set_constants_processed.wgsl", None)
 				.unwrap()
 				.source_string
 		)
@@ -619,7 +624,7 @@ mod tests {
 	#[test]
 	fn load_proper_label() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/included.wgsl")
+			ShaderBuilder::new("test_shaders/included.wgsl", None)
 				.unwrap()
 				.build()
 				.label
@@ -631,26 +636,32 @@ mod tests {
 	#[test]
 	fn put_array_definition_bools() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/put_array_definition_bools.wgsl")
+			ShaderBuilder::new("test_shaders/put_array_definition_bools.wgsl", None)
 				.unwrap()
 				.put_array_definition("BOOL_ARRAY", &vec![&true, &false])
 				.source_string,
-			ShaderBuilder::new("test_shaders/put_array_definition_bools_processed.wgsl")
-				.unwrap()
-				.source_string
+			ShaderBuilder::new(
+				"test_shaders/put_array_definition_bools_processed.wgsl",
+				None
+			)
+			.unwrap()
+			.source_string
 		)
 	}
 
 	#[test]
 	fn put_array_definition_scalar() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/put_array_definition_scalars.wgsl")
+			ShaderBuilder::new("test_shaders/put_array_definition_scalars.wgsl", None)
 				.unwrap()
 				.put_array_definition("SCALAR_ARRAY", &vec![&1, &0])
 				.source_string,
-			ShaderBuilder::new("test_shaders/put_array_definition_scalars_processed.wgsl")
-				.unwrap()
-				.source_string
+			ShaderBuilder::new(
+				"test_shaders/put_array_definition_scalars_processed.wgsl",
+				None
+			)
+			.unwrap()
+			.source_string
 		)
 	}
 
@@ -670,7 +681,7 @@ mod tests {
 			}
 		}
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/put_array_definition_structs.wgsl")
+			ShaderBuilder::new("test_shaders/put_array_definition_structs.wgsl", None)
 				.unwrap()
 				.put_array_definition(
 					"STRUCT_ARRAY",
@@ -684,9 +695,12 @@ mod tests {
 					]
 				)
 				.source_string,
-			ShaderBuilder::new("test_shaders/put_array_definition_structs_processed.wgsl")
-				.unwrap()
-				.source_string
+			ShaderBuilder::new(
+				"test_shaders/put_array_definition_structs_processed.wgsl",
+				None
+			)
+			.unwrap()
+			.source_string
 		)
 	}
 
@@ -694,16 +708,19 @@ mod tests {
 	#[test]
 	fn put_array_definition_array_vectors() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/put_array_definition_vectors.wgsl")
+			ShaderBuilder::new("test_shaders/put_array_definition_vectors.wgsl", None)
 				.unwrap()
 				.put_array_definition(
 					"VECTOR_ARRAY",
 					&vec![&[1.0, 2.0, 3.0, 4.0], &[1.5, 2.1, 3.7, 4.9]]
 				)
 				.source_string,
-			ShaderBuilder::new("test_shaders/put_array_definition_vectors_processed.wgsl")
-				.unwrap()
-				.source_string
+			ShaderBuilder::new(
+				"test_shaders/put_array_definition_vectors_processed.wgsl",
+				None
+			)
+			.unwrap()
+			.source_string
 		)
 	}
 
@@ -711,7 +728,7 @@ mod tests {
 	#[test]
 	fn put_array_definition_cgmath_vectors() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/put_array_definition_vectors.wgsl")
+			ShaderBuilder::new("test_shaders/put_array_definition_vectors.wgsl", None)
 				.unwrap()
 				.put_array_definition(
 					"VECTOR_ARRAY",
@@ -721,9 +738,12 @@ mod tests {
 					]
 				)
 				.source_string,
-			ShaderBuilder::new("test_shaders/put_array_definition_vectors_processed.wgsl")
-				.unwrap()
-				.source_string
+			ShaderBuilder::new(
+				"test_shaders/put_array_definition_vectors_processed.wgsl",
+				None
+			)
+			.unwrap()
+			.source_string
 		)
 	}
 }
