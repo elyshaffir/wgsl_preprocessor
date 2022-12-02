@@ -133,6 +133,41 @@ The compiled contents would be identical to:
 var<private> STRUCT_ARRAY: array<Struct, 2> = array<Struct, 2>(Struct(vec4<f32>(1.0, 2.0, 3.0, 4.0)),Struct(vec4<f32>(1.5, 2.1, 3.7, 4.9)),);
 ```
 
+#example: Parsing ifdef, else and ifndef
+In this example we have a condition specifying wether we want our shader to work
+with 2 dimentional vectors or 3 dimensional vectors.
+```wgsl
+//!ifdef THREE_DIMENTIONAL
+struct Struct { data: vec3<f32>, }
+//!else
+struct Struct { data: vec2<f32>, }
+//!endif
+
+//!ifndef THREE_DIMENTIONAL
+struct OtherStruct { data: vec2<f32>, }
+//!else
+struct OtherStruct { data: vec3<f32>, }
+//!endif
+```
+In the Rust code we then pass the `parse_defs` function ana array containing all
+of the vaild definitions (this is designed for compatability with the bitflags crate).
+
+```no_run
+use wgsl_preprocessor::ShaderBuilder;
+
+ShaderBuilder::new("main.wgsl")
+	.unwrap()
+	.parse_defines(&["THREE_DIMENTIONAL".into()])
+	.build();
+```
+The output will then be identical to:
+```wgsl
+struct Struct { data: vec3<f32>, }
+
+struct OtherStruct { data: vec3<f32>, }
+```
+
+
 # Crate features
 
 ### Inserting Arrays of Suitable Lengths as Vectors
@@ -342,51 +377,48 @@ impl ShaderBuilder {
 		}
 	}
 
-	/// parses 
-	/// 
+	/// parses
+	///
 	/// `//!ifdef SOME_DEFINE`
-	/// `//!ifndef SOME_DEFINE` 
+	/// `//!ifndef SOME_DEFINE`
 	/// `//!else`
 	/// `//!endif`
-	/// 
-	/// similar to c or glsl
-	/// 
+	///
+	/// similar to glsl
+	///
 	/// # Arguments
 	/// - `defines` - list of strings which equal the defines in wgsl
 	pub fn parse_defines(&mut self, defines: &[String]) -> &mut Self {
-
 		let lines = self.source_string.lines();
 		let mut fin: Vec<String> = vec![];
 
 		let mut add = true;
-		
+
 		for line in lines {
 			let line = line.trim();
-	
+
 			if line.starts_with(ELSE_INSTRUCTION) {
 				add = !add;
 				continue;
-			}
-			else if line.starts_with(ENDIF_INSTRUCTION) {
+			} else if line.starts_with(ENDIF_INSTRUCTION) {
 				add = true;
 				continue;
 			}
-	
+
 			if line.starts_with(IFDEF_INSTRUCTION) {
 				let def = defines.contains(&line.split(' ').nth(1).unwrap().into());
-	
+
 				add = def;
 				continue;
-			}
-			else if line.starts_with(IFNDEF_INSTRUCTION) {
+			} else if line.starts_with(IFNDEF_INSTRUCTION) {
 				let def = !defines.contains(&line.split(' ').nth(1).unwrap().into());
-	
+
 				add = def;
 				continue;
 			}
-	
+
 			if add {
-				fin.push(line.to_owned() + if line == "\n" || line == "" {""} else {"\n"});
+				fin.push(line.to_owned() + if line == "\n" || line == "" { "" } else { "\n" });
 			}
 		}
 
@@ -430,13 +462,13 @@ mod tests {
 	use std::{collections::HashMap, io};
 
 	#[test]
-	fn defines() {
+	fn conditional_compilation() {
 		assert_eq!(
-			ShaderBuilder::new("test_shaders/defines.wgsl")
+			ShaderBuilder::new("test_shaders/conditional_compilation.wgsl")
 				.unwrap()
-				.parse_defines(&["TRUE".into()])
+				.parse_defines(&["THREE_DIMENTIONAL".into()])
 				.source_string,
-			ShaderBuilder::new("test_shaders/defines_result.wgsl")
+			ShaderBuilder::new("test_shaders/conditional_compilation_processed.wgsl")
 				.unwrap()
 				.source_string
 		)
