@@ -456,7 +456,7 @@ mod tests {
 	}
 
 	#[test]
-	fn include_define() {
+	fn included_define() {
 		assert_eq!(
 			ShaderBuilder::new("test_shaders/included_define.wgsl")
 				.unwrap()
@@ -617,6 +617,113 @@ mod tests {
 			ShaderBuilder::new("test_shaders/put_array_definition_vectors_processed.wgsl")
 				.unwrap()
 				.source_string
+		)
+	}
+
+	#[test]
+	fn ifdef() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/ifdef.wgsl")
+				.unwrap()
+				.source_string,
+			ShaderBuilder::new("test_shaders/ifdef_processed.wgsl")
+				.unwrap()
+				.source_string
+		)
+	}
+
+	#[test]
+	fn ifdef_else() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/ifdef_else.wgsl")
+				.unwrap()
+				.source_string,
+			ShaderBuilder::new("test_shaders/ifdef_else_processed.wgsl")
+				.unwrap()
+				.source_string
+		)
+	}
+
+	#[test]
+	fn ifdef_else_else_branch() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/ifdef_else_else_branch.wgsl")
+				.unwrap()
+				.source_string,
+			ShaderBuilder::new("test_shaders/ifdef_else_else_branch_processed.wgsl")
+				.unwrap()
+				.source_string
+		)
+	}
+
+	#[test]
+	fn ifdef_nested() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/ifdef_nested.wgsl")
+				.unwrap()
+				.source_string,
+			ShaderBuilder::new("test_shaders/ifdef_nested_processed.wgsl")
+				.unwrap()
+				.source_string
+		)
+	}
+
+	#[test]
+	fn ifdef_with_include() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/ifdef_with_include.wgsl")
+				.unwrap()
+				.source_string,
+			ShaderBuilder::new("test_shaders/included.wgsl")
+				.unwrap()
+				.source_string
+		)
+	}
+
+	#[test]
+	fn ifdef_no_endif() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/ifdef_no_endif.wgsl")
+				.err()
+				.unwrap()
+				.kind(),
+			io::ErrorKind::InvalidData
+		);
+	}
+
+	#[test]
+	fn ifndef() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/ifndef.wgsl")
+				.unwrap()
+				.source_string,
+			ShaderBuilder::new("test_shaders/ifndef_processed.wgsl")
+				.unwrap()
+				.source_string
+		)
+	}
+
+	#[test]
+	fn ifndef_undefined() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/ifndef_undefined.wgsl")
+				.unwrap()
+				.source_string,
+			ShaderBuilder::new("test_shaders/ifndef_undefined_processed.wgsl")
+				.unwrap()
+				.source_string
+		)
+	}
+
+	#[test]
+	fn ifdef_included_define() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/ifdef_included_define.wgsl")
+				.unwrap()
+				.source_string,
+			ShaderBuilder::new("test_shaders/ifdef_included_define_processed.wgsl")
+				.unwrap()
+				.source_string,
 		)
 	}
 }

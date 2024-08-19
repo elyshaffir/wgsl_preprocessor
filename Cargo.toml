@@ -1,7 +1,7 @@
 [package]
 authors = ["Ely Shaffir"]
 name = "wgsl_preprocessor"
-version = "1.1.4"
+version = "1.2.0"
 edition = "2021"
 license = "GPL-2.0-or-later"
 description = "An unofficial preprocessor for WGSL written in Rust for WGPU."

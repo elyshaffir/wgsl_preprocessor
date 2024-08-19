@@ -1,0 +1,1 @@
+//!ifdef NO_ENDIF
