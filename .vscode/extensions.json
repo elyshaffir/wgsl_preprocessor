@@ -1,0 +1,10 @@
+{
+    "recommendations": [
+        "PolyMeilex.wgsl",
+        "vadimcn.vscode-lldb",
+        "JScearcy.rust-doc-viewer",
+        "dustypomerleau.rust-syntax",
+        "rust-lang.rust-analyzer",
+        "statiolake.vscode-rustfmt",
+    ]
+}
