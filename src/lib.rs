@@ -260,11 +260,7 @@ impl ShaderBuilder {
 	/// 	See "Examples" for more details on include and macro functionality.
 	pub fn new(source_path: &str) -> Result<Self, ex::io::Error> {
 		let module_path = path::Path::new(&source_path);
-		let source_string = Self::load_shader_module(
-			module_path.parent().unwrap_or(path::Path::new("./")),
-			module_path,
-		)?
-		.0;
+		let source_string = Self::load_shader_module(module_path)?.0;
 		Ok(Self {
 			source_string,
 			source_path: source_path.to_string(),
@@ -339,7 +335,6 @@ impl ShaderBuilder {
 	}
 
 	fn load_shader_module(
-		base_path: &path::Path,
 		module_path: &path::Path,
 	) -> Result<(String, HashMap<String, String>), ex::io::Error> {
 		let module_source = ex::fs::read_to_string(module_path)?;
@@ -349,7 +344,7 @@ impl ShaderBuilder {
 			if line.starts_with(INCLUDE_INSTRUCTION) {
 				for include in line.split_whitespace().skip(1) {
 					let (included_module_string, included_definitions) =
-						Self::load_shader_module(base_path, &path::Path::new(include))?;
+						Self::load_shader_module(&path::Path::new(include))?;
 					module_string.push_str(&included_module_string);
 					definitions.extend(included_definitions);
 				}
