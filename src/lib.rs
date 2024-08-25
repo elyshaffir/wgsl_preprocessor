@@ -159,6 +159,7 @@ const DEFINE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "de
 const UNDEF_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "undef");
 const IFDEF_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "ifdef");
 const IFNDEF_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "ifndef");
+const ELSE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "else");
 const ENDIF_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "endif");
 lazy_static::lazy_static! {
 	static ref DEFINE_REGEX: regex::Regex = regex::Regex::new(&format!(r"{DEFINE_INSTRUCTION} (\S+) (.+)")).unwrap();
@@ -367,6 +368,13 @@ impl ShaderBuilder {
 		for line in module_source.lines() {
 			if line.starts_with(ENDIF_INSTRUCTION) {
 				if let None = defined_conditions.pop_back() {
+					return Err(io::Error::from(io::ErrorKind::InvalidData));
+				}
+				continue;
+			} else if line == ELSE_INSTRUCTION {
+				if let Some(condition) = defined_conditions.pop_back() {
+					defined_conditions.push_back((condition.0, !condition.1));
+				} else {
 					return Err(io::Error::from(io::ErrorKind::InvalidData));
 				}
 				continue;
