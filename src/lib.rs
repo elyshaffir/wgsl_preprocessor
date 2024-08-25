@@ -230,7 +230,6 @@ impl WGSLType for wgsl_type {
 	}
 
 	fn string_definition(&self) -> String {
-		println!("{}", format!("{:?}", self));
 		format!(
 			"{}({})",
 			Self::type_name(),
@@ -415,7 +414,13 @@ impl ShaderBuilder {
 				if defines.len() != 1 {
 					return Err(io::Error::from(io::ErrorKind::InvalidData));
 				}
-				self.define(defines[0]);
+
+				if !self.definitions.contains_key(defines[0]) {
+					self.define(defines[0]);
+				} else {
+					module_string.push_str(defines[0]);
+					module_string.push('\n');
+				}
 			} else {
 				module_string.push_str(line);
 				module_string.push('\n');
