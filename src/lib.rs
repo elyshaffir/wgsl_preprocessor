@@ -369,6 +369,7 @@ impl ShaderBuilder {
 				if let None = defined_conditions.pop_back() {
 					return Err(io::Error::from(io::ErrorKind::InvalidData));
 				}
+				continue;
 			} else if line.starts_with(UNDEF_INSTRUCTION) {
 				let undefs: Vec<&str> = line.split_whitespace().skip(1).collect();
 				if undefs.len() != 1 {
@@ -377,6 +378,7 @@ impl ShaderBuilder {
 				if let None = self.definitions.remove(undefs[0]) {
 					return Err(io::Error::from(io::ErrorKind::InvalidData));
 				}
+				continue;
 			}
 			// todo solve this *
 			let relevant = defined_conditions.iter().all(|(name, should_be_defined)| {
@@ -386,12 +388,12 @@ impl ShaderBuilder {
 			if !relevant {
 				continue;
 			}
-			if line == IFDEF_INSTRUCTION || line == IFNDEF_INSTRUCTION {
+			if line.starts_with(IFDEF_INSTRUCTION) || line.starts_with(IFNDEF_INSTRUCTION) {
 				let conditions: Vec<&str> = line.split_whitespace().skip(1).collect();
 				if conditions.len() != 1 {
 					return Err(io::Error::from(io::ErrorKind::InvalidData));
 				}
-				defined_conditions.push_back((conditions[0], line == IFDEF_INSTRUCTION));
+				defined_conditions.push_back((conditions[0], line.starts_with(IFDEF_INSTRUCTION)));
 			} else if line.starts_with(INCLUDE_INSTRUCTION) {
 				for include in line.split_whitespace().skip(1) {
 					let included_module_string = self.load_shader_module(include)?;
