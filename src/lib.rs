@@ -145,13 +145,24 @@ By default, none of the following features are enabled.
   This feature is similar to **array_vectors** but with [`cgmath`] vector objects like [`cgmath::Vector3<u32>`]
   which would be translated to `vec3<u32>`.
 */
-use std::{any, borrow, collections::HashMap, path};
+use core::str;
+use std::{
+	any,
+	borrow::{self, Borrow},
+	collections::{HashMap, HashSet, Linke, LinkedList},
+	hash::Hash,
+	io, path,
+};
 
 const INSTRUCTION_PREFIX: &str = "//!";
 const INCLUDE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "include");
 const DEFINE_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "define");
+const UNDEF_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "undef");
+const IFDEF_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "ifdef");
+const IFNDEF_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "ifndef");
+const ENDIF_INSTRUCTION: &str = const_format::concatcp!(INSTRUCTION_PREFIX, "endif");
 lazy_static::lazy_static! {
-	static ref MACRO_REGEX: regex::Regex = regex::Regex::new(&format!(r"{DEFINE_INSTRUCTION} (\S+) (.+)")).unwrap();
+	static ref DEFINE_REGEX: regex::Regex = regex::Regex::new(&format!(r"{DEFINE_INSTRUCTION} (\S+) (.+)")).unwrap();
 }
 
 /// Type for data types that can be defined in WGSL.
@@ -244,10 +255,8 @@ impl WGSLType for bool {
 
 /// Wraps shader code, changes it and builds it into a [`wgpu::ShaderModuleDescriptor`].
 pub struct ShaderBuilder {
-	/// String with the current WGSL source.
-	/// It is marked public for debugging purposes.
-	pub source_string: String,
 	source_path: String,
+	definitions: HashMap<String, Option<String>>,
 }
 
 impl ShaderBuilder {
@@ -258,13 +267,11 @@ impl ShaderBuilder {
 	///		All includes will be relative to the parent directory of the root WGSL module.
 	/// 	Code is generated recursively with attention to `include` and `define` statements.
 	/// 	See "Examples" for more details on include and macro functionality.
-	pub fn new(source_path: &str) -> Result<Self, ex::io::Error> {
-		let module_path = path::Path::new(&source_path);
-		let source_string = Self::load_shader_module(module_path)?.0;
-		Ok(Self {
-			source_string,
+	pub fn new(source_path: &str) -> Self {
+		Self {
 			source_path: source_path.to_string(),
-		})
+			definitions: HashMap::new(),
+		}
 	}
 
 	/// Performs the WGSL's parallel to C's `#define` statement.
@@ -273,7 +280,8 @@ impl ShaderBuilder {
 	/// - `name` - Name of the constant; the string to replace in the code.
 	/// - `value` - Value of the constant.
 	pub fn put_constant(&mut self, name: &str, value: impl WGSLType) -> &mut Self {
-		self.source_string = self.source_string.replace(name, &value.string_definition());
+		self.definitions
+			.insert(name.to_string(), Some(value.string_definition()));
 		self
 	}
 
@@ -313,16 +321,17 @@ impl ShaderBuilder {
 
 		string_definition.push_str(");");
 
-		self.source_string = self
-			.source_string
-			.replace(&format!("{DEFINE_INSTRUCTION} {name}"), &string_definition);
+		self.definitions
+			.insert(name.to_string(), Some(string_definition));
 		self
 	}
 
 	/// Builds a [`wgpu::ShaderModuleDescriptor`] from the shader.
 	/// The `label` member of the built [`wgpu::ShaderModuleDescriptor`] is the name of the shader file without the postfix.
-	pub fn build(&self) -> wgpu::ShaderModuleDescriptor {
-		wgpu::ShaderModuleDescriptor {
+	pub fn build(&mut self) -> Result<wgpu::ShaderModuleDescriptor, io::Error> {
+		// todo how to make this method invalidate the object
+		let source_string = self.load_shader_module(path::Path::new(&self.source_path.clone()))?;
+		Ok(wgpu::ShaderModuleDescriptor {
 			label: Some(
 				&self
 					.source_path
@@ -330,35 +339,75 @@ impl ShaderBuilder {
 					.nth(1)
 					.unwrap_or(&self.source_path),
 			),
-			source: wgpu::ShaderSource::Wgsl(borrow::Cow::Borrowed(&self.source_string)),
-		}
+			source: wgpu::ShaderSource::Wgsl(borrow::Cow::Owned(source_string)),
+		})
 	}
 
-	fn load_shader_module(
-		module_path: &path::Path,
-	) -> Result<(String, HashMap<String, String>), ex::io::Error> {
-		let module_source = ex::fs::read_to_string(module_path)?;
+	// todo should not work with ioError but rather with a ShaderBuilderError or something, to help debugging all those InvalidDatas
+	// todo run tests for all feature configurations
+	// todo add doctests about all new features
+	// todo mention/demonstrate new features in the readme
+	fn load_shader_module(&mut self, module_path: &path::Path) -> Result<String, io::Error> {
+		let module_source = std::fs::read_to_string(module_path)?;
 		let mut module_string = String::new();
-		let mut definitions: HashMap<String, String> = HashMap::new();
+		let mut defined_conditions: LinkedList<(&str, bool)> = LinkedList::new();
 		for line in module_source.lines() {
-			if line.starts_with(INCLUDE_INSTRUCTION) {
-				for include in line.split_whitespace().skip(1) {
-					let (included_module_string, included_definitions) =
-						Self::load_shader_module(&path::Path::new(include))?;
-					module_string.push_str(&included_module_string);
-					definitions.extend(included_definitions);
+			if line.starts_with(ENDIF_INSTRUCTION) {
+				if let None = defined_conditions.pop_back() {
+					return Err(io::Error::from(io::ErrorKind::InvalidData));
 				}
-			} else if let Some(captures) = MACRO_REGEX.captures(line) {
-				definitions.insert(captures[1].to_string(), captures[2].to_string());
+			} else if line.starts_with(UNDEF_INSTRUCTION) {
+				let undefs: Vec<&str> = line.split_whitespace().skip(1).collect();
+				if undefs.len() != 1 {
+					return Err(io::Error::from(io::ErrorKind::InvalidData));
+				}
+				if let None = self.definitions.remove(undefs[0]) {
+					return Err(io::Error::from(io::ErrorKind::InvalidData));
+				}
+			}
+			// todo solve this *
+			let ignored = defined_conditions.iter().all(|(name, should_be_defined)| {
+				(*should_be_defined && self.definitions.contains_key(*name))
+					|| (!*should_be_defined && !self.definitions.contains_key(*name))
+			});
+			if ignored {
+				continue;
+			}
+			if line == IFDEF_INSTRUCTION || line == IFNDEF_INSTRUCTION {
+				let conditions: Vec<&str> = line.split_whitespace().skip(1).collect();
+				if conditions.len() != 1 {
+					return Err(io::Error::from(io::ErrorKind::InvalidData));
+				}
+				defined_conditions.push_back((conditions[0], line == IFDEF_INSTRUCTION));
+			} else if line.starts_with(INCLUDE_INSTRUCTION) {
+				for include in line.split_whitespace().skip(1) {
+					let included_module_string =
+						self.load_shader_module(&path::Path::new(include))?;
+					module_string.push_str(&included_module_string);
+				}
+			} else if let Some(captures) = DEFINE_REGEX.captures(line) {
+				self.definitions
+					.insert(captures[1].to_string(), Some(captures[2].to_string()));
+			} else if line.starts_with(DEFINE_INSTRUCTION) {
+				let defines: Vec<&str> = line.split_whitespace().skip(1).collect();
+				if defines.len() != 1 {
+					return Err(io::Error::from(io::ErrorKind::InvalidData));
+				}
+				self.definitions.insert(defines[0].to_string(), None);
 			} else {
 				module_string.push_str(line);
 				module_string.push('\n');
 			}
 		}
-		definitions.iter().for_each(|(name, value)| {
-			module_string = module_string.replace(name, value);
+		self.definitions.iter().for_each(|(name, value)| {
+			if let Some(replacement) = value {
+				module_string = module_string.replace(name, replacement);
+			}
 		});
-		Ok((module_string, definitions))
+		if !defined_conditions.is_empty() {
+			return Err(io::Error::from(io::ErrorKind::InvalidData));
+		}
+		Ok(module_string)
 	}
 }
 
@@ -722,6 +771,18 @@ mod tests {
 				.unwrap()
 				.source_string,
 			ShaderBuilder::new("test_shaders/ifdef_included_define_processed.wgsl")
+				.unwrap()
+				.source_string,
+		)
+	}
+
+	#[test]
+	fn ifdef_undef() {
+		assert_eq!(
+			ShaderBuilder::new("test_shaders/ifdef_undef.wgsl")
+				.unwrap()
+				.source_string,
+			ShaderBuilder::new("test_shaders/ifdef_undef_processed.wgsl")
 				.unwrap()
 				.source_string,
 		)
