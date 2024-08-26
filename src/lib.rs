@@ -356,7 +356,6 @@ impl ShaderBuilder {
 		})
 	}
 
-	// todo should not work with ioError but rather with a ShaderBuilderError or something, to help debugging all those InvalidDatas
 	// todo run tests for all feature configurations
 	// todo add doctests about all new features
 	// todo mention/demonstrate new features in the readme
@@ -367,30 +366,31 @@ impl ShaderBuilder {
 		for line in module_source.lines() {
 			if line.starts_with(ENDIF_INSTRUCTION) {
 				if let None = defined_conditions.pop_back() {
-					return Err(io::Error::from(io::ErrorKind::InvalidData));
+					return Err(io::Error::other("Unexpected endif statement"));
 				}
 				continue;
 			} else if line == ELSE_INSTRUCTION {
 				if let Some(condition) = defined_conditions.pop_back() {
 					defined_conditions.push_back((condition.0, !condition.1));
 				} else {
-					return Err(io::Error::from(io::ErrorKind::InvalidData));
+					return Err(io::Error::other("Unexpected else statement"));
 				}
 				continue;
 			} else if line.starts_with(UNDEF_INSTRUCTION) {
 				let undefs: Vec<&str> = line.split_whitespace().skip(1).collect();
 				if undefs.len() != 1 {
-					return Err(io::Error::from(io::ErrorKind::InvalidData));
+					return Err(io::Error::other(
+						"Invalid number of keywords after undef statement",
+					));
 				}
 				if let None = self.definitions.remove(undefs[0]) {
-					return Err(io::Error::from(io::ErrorKind::InvalidData));
+					return Err(io::Error::other("Attempt to undef an undefined symbol"));
 				}
 				continue;
 			}
-			// todo solve this *
-			let relevant = defined_conditions.iter().all(|(name, should_be_defined)| {
-				(*should_be_defined && self.definitions.contains_key(*name))
-					|| (!*should_be_defined && !self.definitions.contains_key(*name))
+			let relevant = defined_conditions.iter().all(|&(name, should_be_defined)| {
+				(should_be_defined && self.definitions.contains_key(name))
+					|| (!should_be_defined && !self.definitions.contains_key(name))
 			});
 			if !relevant {
 				continue;
@@ -398,7 +398,9 @@ impl ShaderBuilder {
 			if line.starts_with(IFDEF_INSTRUCTION) || line.starts_with(IFNDEF_INSTRUCTION) {
 				let conditions: Vec<&str> = line.split_whitespace().skip(1).collect();
 				if conditions.len() != 1 {
-					return Err(io::Error::from(io::ErrorKind::InvalidData));
+					return Err(io::Error::other(
+						"Invalid number of keywords after ifdef/ifndef statement",
+					));
 				}
 				defined_conditions.push_back((conditions[0], line.starts_with(IFDEF_INSTRUCTION)));
 			} else if line.starts_with(INCLUDE_INSTRUCTION) {
@@ -412,7 +414,9 @@ impl ShaderBuilder {
 			} else if line.starts_with(DEFINE_INSTRUCTION) {
 				let defines: Vec<&str> = line.split_whitespace().skip(1).collect();
 				if defines.len() != 1 {
-					return Err(io::Error::from(io::ErrorKind::InvalidData));
+					return Err(io::Error::other(
+						"Invalid number of keywords after define statement",
+					));
 				}
 
 				if !self.definitions.contains_key(defines[0]) {
@@ -432,7 +436,10 @@ impl ShaderBuilder {
 			}
 		});
 		if !defined_conditions.is_empty() {
-			return Err(io::Error::from(io::ErrorKind::InvalidData));
+			return Err(io::Error::new(
+				io::ErrorKind::UnexpectedEof,
+				"Module Missing endif statements",
+			));
 		}
 		Ok(module_string)
 	}
@@ -766,7 +773,7 @@ mod tests {
 				.err()
 				.unwrap()
 				.kind(),
-			io::ErrorKind::InvalidData
+			io::ErrorKind::UnexpectedEof
 		);
 	}
 
