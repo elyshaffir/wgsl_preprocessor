@@ -114,7 +114,6 @@ use wgsl_preprocessor::ShaderBuilder;
 # 	}
 # }
 ShaderBuilder::new("main.wgsl")
-	.unwrap()
 	.put_array_definition(
 		"STRUCT_ARRAY",
 		&vec![
@@ -356,7 +355,6 @@ impl ShaderBuilder {
 		})
 	}
 
-	// todo run tests for all feature configurations
 	// todo add doctests about all new features
 	// todo mention/demonstrate new features in the readme
 	fn load_shader_module(&mut self, module_path: &str) -> Result<String, io::Error> {
